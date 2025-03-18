@@ -1,0 +1,12 @@
+{
+    "compilerOptions": {
+      "outDir": "./dist",
+      "rootDir": ".",
+      "moduleResolution": "NodeNext",
+      "module": "NodeNext",
+      "skipLibCheck": true // 添加这行来跳过库的类型检查
+    },
+    "include": [
+      "./**/*.ts"
+    ]
+}
