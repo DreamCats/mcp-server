@@ -27,7 +27,7 @@ The server can be used in two main ways:
 Run the server directly from the command line:
 
 ```bash
-./encoding-server.js
+./index.js
 ```
 
 This starts the server using stdio as the transport mechanism, allowing LLMs to interact with it directly.
