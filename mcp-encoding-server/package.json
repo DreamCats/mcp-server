@@ -1,5 +1,5 @@
 {
-  "name": "@mcp-server/mcp-encoding-server",
+  "name": "@dreamcats/mcp-encoding-server",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
