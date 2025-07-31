@@ -1,0 +1,33 @@
+# Stock MCP Server Dependencies
+# 股票 MCP 服务器依赖包
+
+# Core MCP Framework
+# MCP 核心框架
+fastmcp>=0.1.0
+
+# Web Server
+# Web 服务器
+uvicorn>=0.24.0
+
+# HTTP Client
+# HTTP 客户端
+httpx>=0.25.0
+
+# Data Source - Chinese Stock Market Data
+# 数据源 - 中国股市数据
+akshare>=1.12.0
+
+# Data Processing
+# 数据处理
+pandas>=2.0.0
+
+# Type Hints Support (for Python < 3.9)
+# 类型提示支持（Python < 3.9）
+typing-extensions>=4.0.0
+
+# Optional: Development Dependencies
+# 可选：开发依赖
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+# black>=23.0.0
+# flake8>=6.0.0

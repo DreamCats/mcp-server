@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "stock-data": {
+      "command": "python",
+      "args": [
+        "/Users/bytedance/Demo/mcp/stock/stock_mcp_server.py",
+        "--port",
+        "8124",
+        "--host",
+        "localhost"
+      ],
+      "env": {
+        "PYTHONPATH": "/Users/bytedance/Demo/mcp/stock"
+      }
+    }
+  }
+}
