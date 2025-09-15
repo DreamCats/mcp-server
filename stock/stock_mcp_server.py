@@ -28,7 +28,7 @@ from mcp.server.fastmcp import FastMCP
 # 初始化 FastMCP 服务器，用于股票数据工具
 # json_response=False: 使用 SSE 流式响应而非 JSON
 # stateless_http=False: 使用有状态模式，保持连接状态
-mcp = FastMCP(name="stock", json_response=False, stateless_http=False)
+mcp = FastMCP(name="stock", json_response=True, stateless_http=True)
 
 # 服务常量配置
 USER_AGENT = "stock-mcp-server/1.0"  # 用户代理标识
