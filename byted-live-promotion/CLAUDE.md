@@ -1,0 +1,106 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+This is a **byted-live-promotion MCP (Model Context Protocol) tool** project that integrates with ByteDance's internal service discovery system. The tool provides JWT-based authentication and PSM (Product, Subsys, Module) service lookup capabilities.
+
+## Architecture
+
+### Core Components
+
+1. **JWT Authentication Layer** (`test.py:3-20`)
+   - Retrieves JWT tokens from ByteDance auth service
+   - Uses `CAS_SESSION` cookie for authentication
+   - Base URL: `https://cloud.bytedance.net/auth/api/v1/jwt`
+
+2. **PSM Service Discovery** (`test.py:26-36`)
+   - Searches ByteDance Neptune service registry
+   - Requires JWT token in `x-jwt-token` header
+   - **Concurrent Requests**: Must query both regions simultaneously:
+     - `https://ms-neptune.byted.org/api/neptune/ms/service/search`
+     - `https://ms-neptune.tiktok-us.org/api/neptune/ms/service/search`
+   - Returns result from whichever endpoint has matching PSM for the keyword
+
+3. **MCP Server Framework**
+   - Uses FastMCP Python SDK for streamable HTTP transport
+   - Follows server-client-transport triad architecture
+   - Supports both JSON and SSE streaming responses
+
+## Development Commands
+
+### Environment Setup
+```bash
+# Activate virtual environment
+source .venv/bin/activate
+
+# Install MCP dependencies (when requirements.txt is available)
+uv pip install mcp fastapi uvicorn httpx
+```
+
+### Testing Authentication Flow
+```bash
+# Test JWT token retrieval and PSM search
+python test.py
+```
+
+### Running MCP Server
+```bash
+# Start streamable HTTP server (based on weather example from 诉求.md:114-120)
+python main.py --port 8123
+```
+
+## Key Implementation Patterns
+
+### Authentication Headers
+```python
+jwt_header = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Cookie": f"CAS_SESSION={cookie_value}"
+}
+```
+
+### MCP Tool Structure
+```python
+from mcp.server.fastmcp import FastMCP
+import asyncio
+import httpx
+
+mcp = FastMCP(name="byted-live-promotion", json_response=False, stateless_http=False)
+
+@mcp.tool()
+async def get_service_info(keyword: str) -> str:
+    """Get service information from Neptune registry with concurrent region queries.
+
+    Args:
+        keyword: Service keyword to search for
+
+    Returns:
+        Service information from the region that has matching PSM
+    """
+    # Concurrent requests to both regions
+    # Implementation should query both URLs and return the one with matching PSM
+    return formatted_result
+```
+
+## Configuration Files
+
+- **`.mcp.json`**: MCP server configurations for Lark, Context7, and Fetch services
+- **`.claude/settings.local.json`**: Claude-specific settings
+- **`.claude/agents/mcp-development-specialist.md`**: MCP development guidelines
+
+## External Dependencies
+
+- **ByteDance Internal APIs**: Authentication and service discovery
+- **Neptune Service Registry**: PSM service lookup (dual-region: byted.org and tiktok-us.org)
+- **FastMCP SDK**: MCP server implementation framework
+- **httpx**: For concurrent HTTP requests to multiple regions
+
+## Security Considerations
+
+- JWT tokens are retrieved from environment-specific cookie values
+- Service discovery requires valid JWT authentication
+- All API calls should include proper error handling and timeouts
