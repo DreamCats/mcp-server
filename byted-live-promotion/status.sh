@@ -23,7 +23,7 @@ fi
 # 进程存在，获取详细信息
 echo "状态: ✅ 运行中"
 echo "进程 ID: $PID"
-echo "端口: ${MCP_PORT:-8123}"
+echo "端口: ${MCP_PORT:-8200}"
 echo "环境变量 CAS_SESSION: $([ -n "$CAS_SESSION" ] && echo "已设置" || echo "未设置")"
 
 # 检查日志文件
@@ -42,11 +42,11 @@ fi
 
 # 检查端口监听
 if command -v netstat >/dev/null 2>&1; then
-    PORT_STATUS=$(netstat -an 2>/dev/null | grep -q ":${MCP_PORT:-8123} " && echo "✅" || echo "❌")
-    echo "端口监听: ${PORT_STATUS} ${MCP_PORT:-8123}"
+    PORT_STATUS=$(netstat -an 2>/dev/null | grep -q ":${MCP_PORT:-8200} " && echo "✅" || echo "❌")
+    echo "端口监听: ${PORT_STATUS} ${MCP_PORT:-8200}"
 elif command -v lsof >/dev/null 2>&1; then
-    PORT_STATUS=$(lsof -i :${MCP_PORT:-8123} >/dev/null 2>&1 && echo "✅" || echo "❌")
-    echo "端口监听: ${PORT_STATUS} ${MCP_PORT:-8123}"
+    PORT_STATUS=$(lsof -i :${MCP_PORT:-8200} >/dev/null 2>&1 && echo "✅" || echo "❌")
+    echo "端口监听: ${PORT_STATUS} ${MCP_PORT:-8200}"
 else
     echo "端口监听: 无法检测（缺少 netstat/lsof）"
 fi

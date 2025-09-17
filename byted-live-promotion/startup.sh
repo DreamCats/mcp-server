@@ -29,7 +29,7 @@ if [ -f "mcp-server.pid" ]; then
     PID=$(cat mcp-server.pid)
     if kill -0 $PID 2>/dev/null; then
         echo "MCP 服务器已在运行，进程 ID: $PID"
-        echo "端口: ${MCP_PORT:-8123}"
+        echo "端口: ${MCP_PORT:-8200}"
         exit 0
     else
         echo "清理无效的 pid 文件"
@@ -39,10 +39,10 @@ fi
 
 # 启动 MCP 服务器（后台模式）
 echo "正在启动 MCP 服务器..."
-echo "端口: ${MCP_PORT:-8123}"
+echo "端口: ${MCP_PORT:-8200}"
 echo "日志文件: mcp-server.log"
 
-nohup python main.py --port ${MCP_PORT:-8123} > mcp-server.log 2>&1 &
+nohup python main.py --port ${MCP_PORT:-8200} > mcp-server.log 2>&1 &
 
 # 保存进程 ID
 echo $! > mcp-server.pid
@@ -55,7 +55,7 @@ PID=$(cat mcp-server.pid)
 if kill -0 $PID 2>/dev/null; then
     echo "✅ MCP 服务器启动成功"
     echo "进程 ID: $PID"
-    echo "端口: ${MCP_PORT:-8123}"
+    echo "端口: ${MCP_PORT:-8200}"
     echo "日志: tail -f mcp-server.log"
 else
     echo "❌ MCP 服务器启动失败"
