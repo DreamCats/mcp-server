@@ -33,4 +33,12 @@ psm_params = {
 }
 psm_response = requests.get(psm_url, headers=psm_header, params=psm_params)
 # print(psm_response.status_code)
-print(json.dumps(psm_response.json()))
+# print(json.dumps(psm_response.json()))
+
+cluster_url = "https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/plane/clusters?psm=oec.affiliate.monitor&test_plane=1&env=prod"
+cluster_headers = {
+    "x-jwt-token":jwt_response.headers["X-Jwt-Token"],
+}
+cluster_response = requests.get(cluster_url, headers=cluster_headers)
+
+print(cluster_response.json())

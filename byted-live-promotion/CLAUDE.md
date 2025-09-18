@@ -23,7 +23,21 @@ This is a **byted-live-promotion MCP (Model Context Protocol) tool** project tha
      - `https://ms-neptune.tiktok-us.org/api/neptune/ms/service/search`
    - Returns result from whichever endpoint has matching PSM for the keyword
 
-3. **MCP Server Framework**
+3. **Cluster Discovery**
+   - Queries TikTok Row API to find clusters associated with a PSM
+   - Requires JWT token in `x-jwt-token` header
+   - Base URL: `https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/plane/clusters`
+   - Parameters: `psm`, `test_plane=1`, `env=prod`
+   - Returns cluster information including zone, IDC, and online status
+
+4. **Instance Address Discovery**
+   - Queries TikTok Row API to find machine instance addresses for a specific cluster
+   - Requires JWT token in `x-jwt-token` header
+   - Base URL: `https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/addrs`
+   - Parameters: `psm`, `env=prod`, `zone`, `idc`, `cluster`
+   - Returns array of instance addresses in format `[ip]:port`
+
+5. **MCP Server Framework**
    - Uses FastMCP Python SDK for streamable HTTP transport
    - Follows server-client-transport triad architecture
    - Supports both JSON and SSE streaming responses
@@ -63,6 +77,14 @@ jwt_header = {
 }
 ```
 
+### Cluster Discovery Headers
+```python
+cluster_header = {
+    "accept": "application/json, text/plain, */*",
+    "x-jwt-token": jwt_token
+}
+```
+
 ### MCP Tool Structure
 ```python
 from mcp.server.fastmcp import FastMCP
@@ -84,6 +106,37 @@ async def get_service_info(keyword: str) -> str:
     # Concurrent requests to both regions
     # Implementation should query both URLs and return the one with matching PSM
     return formatted_result
+
+@mcp.tool()
+async def get_clusters(psm: str) -> str:
+    """Get cluster information for a given PSM from TikTok Row API.
+
+    Args:
+        psm: Product, Subsys, Module identifier
+
+    Returns:
+        Cluster information including zone, IDC, and online status
+    """
+    # Query cluster information using psm
+    # Return formatted cluster details
+    return formatted_result
+
+@mcp.tool()
+async def get_instance_addresses(psm: str, zone: str, idc: str, cluster: str) -> str:
+    """Get instance addresses for a specific cluster from TikTok Row API.
+
+    Args:
+        psm: Product, Subsys, Module identifier
+        zone: Geographic zone identifier
+        idc: Data center identifier
+        cluster: Cluster name
+
+    Returns:
+        Array of instance addresses in format [ip]:port
+    """
+    # Query instance addresses using cluster parameters
+    # Return formatted address list
+    return formatted_result
 ```
 
 ## Configuration Files
@@ -96,6 +149,7 @@ async def get_service_info(keyword: str) -> str:
 
 - **ByteDance Internal APIs**: Authentication and service discovery
 - **Neptune Service Registry**: PSM service lookup (dual-region: byted.org and tiktok-us.org)
+- **TikTok Row APIs**: Cluster and instance address discovery
 - **FastMCP SDK**: MCP server implementation framework
 - **httpx**: For concurrent HTTP requests to multiple regions
 

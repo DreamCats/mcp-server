@@ -13,6 +13,8 @@ import structlog
 try:
     from auth import JWTAuthManager
     from service_discovery import PSMServiceDiscovery
+    from cluster_discovery import ClusterDiscovery
+    from instance_discovery import InstanceDiscovery
 except ImportError:
     # Fallback for when running as script
     import sys
@@ -20,6 +22,8 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
     from auth import JWTAuthManager
     from service_discovery import PSMServiceDiscovery
+    from cluster_discovery import ClusterDiscovery
+    from instance_discovery import InstanceDiscovery
 
 # Configure structured logging
 structlog.configure(
@@ -57,6 +61,8 @@ class ByteDanceMCPServer:
         # Initialize components
         self.auth_manager = JWTAuthManager()
         self.service_discovery = PSMServiceDiscovery(self.auth_manager)
+        self.cluster_discovery = ClusterDiscovery(self.auth_manager)
+        self.instance_discovery = InstanceDiscovery(self.auth_manager)
 
         # Register MCP tools
         self._register_tools()
@@ -220,6 +226,123 @@ class ByteDanceMCPServer:
                 logger.error("Error searching multiple services", error=str(e))
                 return f"❌ Error searching services: {str(e)}"
 
+        @self.mcp.tool()
+        async def discover_clusters(psm: str) -> str:
+            """
+            Discover clusters for a given PSM in TikTok ROW environments
+
+            Args:
+                psm: PSM identifier to search for clusters (e.g., oec.affiliate.monitor)
+
+            Returns:
+                Cluster information for the specified PSM
+            """
+            try:
+                logger.info("Discovering clusters", psm=psm)
+                result = await self.cluster_discovery.get_cluster_details(psm)
+
+                # Format the response
+                clusters = result.get('clusters', [])
+
+                if not clusters:
+                    return f"❌ No clusters found for PSM: {psm}"
+
+                response = f"""
+📍 **Cluster Discovery Results**
+🔧 **PSM**: {result['psm']}
+🌍 **Region**: {result['region']}
+🧪 **Test Plane**: {result['test_plane']}
+🖥️ **Environment**: {result['environment']}
+
+📊 **Clusters Found**: {len(clusters)}
+"""
+
+                # Add cluster details
+                for i, cluster in enumerate(clusters[:5], 1):  # Limit to first 5 clusters
+                    response += f"\n--- Cluster {i} ---\n"
+                    for key, value in cluster.items():
+                        response += f"  {key}: {value}\n"
+
+                if len(clusters) > 5:
+                    response += f"\n... and {len(clusters) - 5} more clusters\n"
+
+                response += f"\n⏰ **Timestamp**: {result['timestamp']}"
+
+                return response.strip()
+
+            except Exception as e:
+                logger.error("Error discovering clusters", psm=psm, error=str(e))
+                return f"❌ Error discovering clusters for {psm}: {str(e)}"
+
+        @self.mcp.tool()
+        async def discover_instances(psm: str, zone: str, idc: str, cluster: str = None) -> str:
+            """
+            Discover instance addresses for a given PSM with required zone and idc filters
+
+            Args:
+                psm: PSM identifier to search for instances (e.g., oec.affiliate.monitor)
+                zone: Zone filter (required, e.g., "MVAALI", "SGALI")
+                idc: IDC filter (required, e.g., "maliva", "my", "sg1")
+                cluster: Cluster filter (optional, defaults to "default" if not provided)
+
+            Returns:
+                Instance address information for the specified PSM
+
+            Note:
+                zone and idc are required parameters based on API requirements. If cluster is not specified,
+                it defaults to "default".
+            """
+            try:
+                logger.info("Discovering instances", psm=psm, zone=zone, idc=idc, cluster=cluster)
+                result = await self.instance_discovery.get_instance_details(psm, zone, idc, cluster)
+
+                # Format the response
+                instances = result.get('instances', [])
+
+                if not instances:
+                    return f"❌ No instances found for PSM: {psm}"
+
+                response = f"""
+📍 **Instance Discovery Results**
+🔧 **PSM**: {result['psm']}
+🖥️ **Environment**: {result['environment']}
+
+📊 **Instances Found**: {len(instances)}
+"""
+
+                # Add filter information if provided
+                filters = result.get('filters', {})
+                active_filters = {k: v for k, v in filters.items() if v is not None}
+                if active_filters:
+                    response += "\n🔍 **Active Filters**:\n"
+                    for key, value in active_filters.items():
+                        response += f"  {key}: {value}\n"
+
+                # Add instance details (limit to first 5 instances)
+                for i, instance in enumerate(instances[:5], 1):
+                    response += f"\n--- Instance {i} ---\n"
+                    if isinstance(instance, dict):
+                        # Handle dictionary format
+                        for key, value in instance.items():
+                            response += f"  {key}: {value}\n"
+                    elif isinstance(instance, str):
+                        # Handle string format (IP:port addresses)
+                        response += f"  Address: {instance}\n"
+                    else:
+                        # Handle other formats
+                        response += f"  Instance: {instance}\n"
+
+                if len(instances) > 5:
+                    response += f"\n... and {len(instances) - 5} more instances\n"
+
+                response += f"\n⏰ **Timestamp**: {result['timestamp']}"
+
+                return response.strip()
+
+            except Exception as e:
+                logger.error("Error discovering instances", psm=psm, error=str(e))
+                return f"❌ Error discovering instances for {psm}: {str(e)}"
+
     async def start(self):
         """Start the MCP server"""
         logger.info("Starting ByteDance MCP Server")
@@ -240,6 +363,8 @@ class ByteDanceMCPServer:
         try:
             await self.auth_manager.close()
             await self.service_discovery.close()
+            await self.cluster_discovery.close()
+            await self.instance_discovery.close()
             logger.info("Resources cleaned up successfully")
         except Exception as e:
             logger.error("Error during cleanup", error=str(e))

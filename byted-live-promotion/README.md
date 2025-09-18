@@ -1,12 +1,14 @@
 # ByteDance Live Promotion MCP 服务器
 
-集成字节跳动内部服务发现系统的 Model Context Protocol (MCP) 服务器，提供基于 JWT 的身份验证和 PSM（产品、子系统、模块）服务查找功能。
+集成字节跳动内部服务发现系统的 Model Context Protocol (MCP) 服务器，提供基于 JWT 的身份验证和 PSM（产品、子系统、模块）服务查找功能，以及集群和实例发现能力。
 
 ## 功能特性
 
 - **JWT 身份验证**: 与字节跳动认证服务的安全身份验证
 - **PSM 服务发现**: 并发搜索多个区域的服务
-- **MCP 工具**: 四个主要工具用于服务发现和身份验证管理
+- **集群发现**: 查找 TikTok ROW 环境中与 PSM 关联的集群
+- **实例地址发现**: 获取特定集群的机器实例地址
+- **MCP 工具**: 六个主要工具用于服务发现和身份验证管理
 - **流式 HTTP 传输**: 基于 FastMCP 的现代异步架构
 
 ## Quick Start
@@ -61,7 +63,7 @@ kill $(cat mcp-server.pid)
 #### 方法2: 直接运行
 
 ```bash
-python main.py --port 8123
+python main.py --port 8200
 ```
 
 #### 启动脚本功能
@@ -130,12 +132,34 @@ search_multiple_services("oec.affiliate.monitor, oec.affiliate.api")
 
 **返回：** 所有服务的结果和关键信息。
 
+### 5. `discover_clusters`
+发现与特定 PSM 关联的 TikTok ROW 集群。
+
+**使用方法：**
+```
+discover_clusters("oec.affiliate.monitor")
+```
+
+**返回：** 集群信息，包括区域、测试平面、环境和集群详情。
+
+### 6. `discover_instances`
+发现特定集群的机器实例地址。
+
+**使用方法：**
+```
+discover_instances("oec.affiliate.monitor", zone="MVAALI", idc="maliva", cluster="default")
+```
+
+**返回：** 实例地址信息，包括环境、过滤器和实例详情。
+
 ## 架构说明
 
 ### 核心组件
 
 - **JWT 身份验证层**: 从字节跳动认证服务获取令牌
 - **PSM 服务发现**: 跨区域搜索 Neptune 服务注册表
+- **集群发现**: 查询 TikTok Row API 以查找与 PSM 关联的集群
+- **实例地址发现**: 查询 TikTok Row API 以获取特定集群的机器实例地址
 - **MCP 服务器框架**: 基于 FastMCP 的流式 HTTP 传输
 
 ### 服务发现流程
@@ -158,7 +182,9 @@ byted-live-promotion/
 ├── src/
 │   ├── mcp_server.py      # MCP 服务器实现
 │   ├── auth.py            # JWT 身份验证
-│   └── service_discovery.py # PSM 服务发现
+│   ├── service_discovery.py # PSM 服务发现
+│   ├── cluster_discovery.py # 集群发现
+│   └── instance_discovery.py # 实例地址发现
 ├── test.py                # 身份验证测试脚本
 ├── startup.sh             # 启动脚本
 └── README.md
@@ -176,7 +202,7 @@ python test.py
 python main.py --help
 
 选项:
-  --port PORT          监听端口 (默认: 8123)
+  --port PORT          监听端口 (默认: 8200)
   --host HOST          绑定主机 (默认: localhost)
   --log-level LEVEL    日志级别: DEBUG, INFO, WARNING, ERROR (默认: INFO)
 ```
@@ -213,9 +239,9 @@ python main.py --help
 
 服务器启动后提供以下 HTTP 端点：
 
-- **MCP 工具接口**: `http://localhost:8123/mcp`
-- **SSE 流式接口**: `http://localhost:8123/sse`
-- **健康检查**: `http://localhost:8123/health` (如果实现)
+- **MCP 工具接口**: `http://localhost:8200/mcp`
+- **SSE 流式接口**: `http://localhost:8200/sse`
+- **健康检查**: `http://localhost:8200/health` (如果实现)
 
 ### Claude Desktop 配置 (HTTP 模式)
 
@@ -226,7 +252,7 @@ python main.py --help
   "mcpServers": {
     "byted-live-promotion": {
       "command": "python",
-      "args": ["/path/to/byted-live-promotion/main.py", "--port", "8123"],
+      "args": ["/path/to/byted-live-promotion/main.py", "--port", "8200"],
       "env": {
         "CAS_SESSION": "your_cookie_value_here"
       }
@@ -246,7 +272,7 @@ python main.py --help
 
 ```bash
 # 调用 search_psm_service 工具
-curl -X POST http://localhost:8123/mcp \
+curl -X POST http://localhost:8200/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "search_psm_service",
@@ -256,7 +282,7 @@ curl -X POST http://localhost:8123/mcp \
   }'
 
 # 检查 JWT 状态
-curl -X POST http://localhost:8123/mcp \
+curl -X POST http://localhost:8200/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "check_jwt_status",
@@ -271,7 +297,7 @@ import requests
 import json
 
 # MCP 服务器地址
-MCP_SERVER_URL = "http://localhost:8123/mcp"
+MCP_SERVER_URL = "http://localhost:8200/mcp"
 
 def call_mcp_tool(tool_name, arguments):
     """调用 MCP 工具"""
@@ -299,7 +325,7 @@ if __name__ == "__main__":
 ```javascript
 const axios = require('axios');
 
-const MCP_SERVER_URL = 'http://localhost:8123/mcp';
+const MCP_SERVER_URL = 'http://localhost:8200/mcp';
 
 async function callMcpTool(toolName, arguments) {
     try {
@@ -339,7 +365,7 @@ main().catch(console.error);
 export CAS_SESSION="your_cookie_value"
 
 # 可选
-export MCP_PORT="8123"          # 自定义端口
+export MCP_PORT="8200"          # 自定义端口
 export LOG_LEVEL="INFO"         # 日志级别
 ```
 
@@ -349,10 +375,10 @@ export LOG_LEVEL="INFO"         # 日志级别
 
 ```bash
 # 测试服务器是否运行
-curl -I http://localhost:8123/health
+curl -I http://localhost:8200/health
 
 # 测试工具调用
-curl -X POST http://localhost:8123/mcp \
+curl -X POST http://localhost:8200/mcp \
   -H "Content-Type: application/json" \
   -d '{"tool": "list_available_regions", "arguments": {}}'
 ```
@@ -369,7 +395,7 @@ curl -X POST http://localhost:8123/mcp \
 
 1. ✅ 验证 `CAS_SESSION` 环境变量已设置
 2. ✅ 确认 MCP 服务器正在运行 (`ps aux | grep main.py`)
-3. ✅ 检查端口是否被占用 (`netstat -an | grep 8123`)
+3. ✅ 检查端口是否被占用 (`netstat -an | grep 8200`)
 4. ✅ 查看日志文件 `mcp-server.log` 中的错误信息
 5. ✅ 测试 HTTP 端点是否可访问：`curl -I http://localhost:8123/mcp`
 
