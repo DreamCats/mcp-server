@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "lark_mcp": {
+      "command": "lark-mcp",
+      "args": [
+        "mcp",
+        "-a",
+        "cli_a8d667668b73900b",
+        "-s",
+        "FS9N0KX5IFrAnu38ANGQegJpyWeOvEr7"
+      ],
+      "env": {}
+    },
+    "context7-mcp": {
+      "type": "http",
+      "url": "https://mcp.api-inference.modelscope.net/29dd6e59c29640/mcp"
+    },
+    "fetch": {
+      "type": "http",
+      "url": "https://mcp.api-inference.modelscope.net/1c8d647f46de47/mcp"
+    }
+  }
+}
