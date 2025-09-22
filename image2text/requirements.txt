@@ -1,0 +1,21 @@
+# MCP SDK and server dependencies
+mcp[cli]>=0.1.0
+
+# Web framework for HTTP server
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# HTTP client for API calls
+httpx>=0.25.0
+
+# Data validation and settings
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Testing framework
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Development tools (optional)
+python-dotenv>=1.0.0  # For environment variable management
+pillow>=10.0.0        # For image processing utilities
