@@ -10,12 +10,12 @@ This is a **byted-api MCP (Model Context Protocol) tool** project that integrate
 
 ### Core Components
 
-1. **JWT Authentication Layer** (`test.py:3-20`)
+1. **JWT Authentication Layer** (`src/auth.py:16-116`)
    - Retrieves JWT tokens from ByteDance auth service
    - Uses `CAS_SESSION` cookie for authentication
    - Base URL: `https://cloud.bytedance.net/auth/api/v1/jwt`
 
-2. **PSM Service Discovery** (`test.py:26-36`)
+2. **PSM Service Discovery** (`src/service_discovery.py`)
    - Searches ByteDance Neptune service registry
    - Requires JWT token in `x-jwt-token` header
    - **Concurrent Requests**: Must query both regions simultaneously:
@@ -23,21 +23,21 @@ This is a **byted-api MCP (Model Context Protocol) tool** project that integrate
      - `https://ms-neptune.tiktok-us.org/api/neptune/ms/service/search`
    - Returns result from whichever endpoint has matching PSM for the keyword
 
-3. **Cluster Discovery**
+3. **Cluster Discovery** (`src/cluster_discovery.py`)
    - Queries TikTok Row API to find clusters associated with a PSM
    - Requires JWT token in `x-jwt-token` header
    - Base URL: `https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/plane/clusters`
    - Parameters: `psm`, `test_plane=1`, `env=prod`
    - Returns cluster information including zone, IDC, and online status
 
-4. **Instance Address Discovery**
+4. **Instance Address Discovery** (`src/instance_discovery.py`)
    - Queries TikTok Row API to find machine instance addresses for a specific cluster
    - Requires JWT token in `x-jwt-token` header
    - Base URL: `https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/addrs`
    - Parameters: `psm`, `env=prod`, `zone`, `idc`, `cluster`
    - Returns array of instance addresses in format `[ip]:port`
 
-5. **i18n RPC Request Simulation**
+5. **i18n RPC Request Simulation** (`src/rpc_simulation.py`)
    - Simulates RPC requests to i18n services using discovered instance addresses
    - Requires JWT token in `x-jwt-token` header
    - Base URL: `https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/rpc_request`
@@ -53,7 +53,7 @@ This is a **byted-api MCP (Model Context Protocol) tool** project that integrate
      - Additional parameters: `idl_source`, `idl_version`, `online`, `rpc_context`, `source`, `request_timeout`
    - Returns RPC response with `resp_body`, performance metrics, and debug information
 
-6. **MCP Server Framework**
+6. **MCP Server Framework** (`src/mcp_server.py`)
    - Uses FastMCP Python SDK for streamable HTTP transport
    - Follows server-client-transport triad architecture
    - Supports both JSON and SSE streaming responses
@@ -72,13 +72,28 @@ uv pip install mcp fastapi uvicorn httpx
 ### Testing Authentication Flow
 ```bash
 # Test JWT token retrieval and PSM search
-python test.py
+python test_mcp.py
 ```
 
 ### Running MCP Server
 ```bash
 # Start streamable HTTP server (based on weather example from 诉求.md:114-120)
 python main.py --port 8123
+
+# Or use startup script for background mode
+./startup.sh
+```
+
+### Running Tests
+```bash
+# Run comprehensive tests
+python test_comprehensive.py
+
+# Run specific module tests
+python test_cluster_discovery.py
+python test_instance_discovery.py
+python test_rpc_simulation.py
+python test_error_handling.py
 ```
 
 ## Key Implementation Patterns

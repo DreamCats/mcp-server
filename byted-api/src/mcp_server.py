@@ -16,6 +16,7 @@ try:
     from cluster_discovery import ClusterDiscovery
     from instance_discovery import InstanceDiscovery
     from rpc_simulation import RPCSimulator
+    from log_discovery import LogDiscovery
 except ImportError:
     # Fallback for when running as script
     import sys
@@ -26,6 +27,7 @@ except ImportError:
     from cluster_discovery import ClusterDiscovery
     from instance_discovery import InstanceDiscovery
     from rpc_simulation import RPCSimulator
+    from log_discovery import LogDiscovery
 
 # Configure structured logging
 structlog.configure(
@@ -61,11 +63,18 @@ class ByteDanceMCPServer:
         )
 
         # Initialize components
+        # Create region-specific JWT managers for log discovery
+        self.jwt_managers = {
+            "us": JWTAuthManager(region="us"),
+            "i18n": JWTAuthManager(region="i18n")
+        }
+        # Default auth manager for other services (backward compatibility)
         self.auth_manager = JWTAuthManager()
         self.service_discovery = PSMServiceDiscovery(self.auth_manager)
         self.cluster_discovery = ClusterDiscovery(self.auth_manager)
         self.instance_discovery = InstanceDiscovery(self.auth_manager)
         self.rpc_simulator = RPCSimulator(self.auth_manager)
+        self.log_discovery = LogDiscovery(self.jwt_managers)
 
         # Register MCP tools
         self._register_tools()
@@ -403,6 +412,57 @@ class ByteDanceMCPServer:
                 logger.error("Error simulating RPC request", error=str(e))
                 return f"❌ Error simulating RPC request: {str(e)}"
 
+        @self.mcp.tool()
+        async def query_logs_by_logid(logid: str, psm_list: str = None, scan_time_min: int = 10,
+                                    region: str = "all") -> str:
+            """
+            Query logs by logid for multiple regions (us and i18n) with intelligent region detection
+
+            Args:
+                logid: Log ID to search for (required)
+                psm_list: Comma-separated list of PSM services to filter (optional)
+                scan_time_min: Scan time range in minutes (default: 10)
+                region: Target region - "all", "us", "i18n" (default: "all")
+
+            Returns:
+                Log query results including messages with key information from the best region
+
+            Examples:
+
+                # Force specific region
+                query_logs_by_logid("20250923034643559E874098ED5808B03C", region="i18n")
+
+                # With PSM filtering
+                query_logs_by_logid("20250923034643559E874098ED5808B03C", psm_list="oec.live.promotion_core")
+
+                # Query all regions concurrently
+                query_logs_by_logid("20250923034643559E874098ED5808B03C", region="all")
+            """
+            try:
+                # Parse PSM list if provided
+                psm_services = None
+                if psm_list:
+                    psm_services = [psm.strip() for psm in psm_list.split(",") if psm.strip()]
+
+                logger.info("Querying logs by logid", logid=logid, psm_list=psm_services,
+                           scan_time_min=scan_time_min, region=region)
+
+                # Query logs with new multi-region support
+                result = await self.log_discovery.get_log_details(
+                    logid=logid,
+                    psm_list=psm_services,
+                    scan_time_min=scan_time_min,
+                    region=region
+                )
+
+                # Format the response
+                formatted_response = self.log_discovery.format_log_response(result)
+                return formatted_response
+
+            except Exception as e:
+                logger.error("Error querying logs by logid", logid=logid, error=str(e))
+                return f"❌ Error querying logs for logid {logid}: {str(e)}"
+
     async def start(self):
         """Start the MCP server"""
         logger.info("Starting ByteDance MCP Server")
@@ -422,10 +482,14 @@ class ByteDanceMCPServer:
         # Cleanup resources
         try:
             await self.auth_manager.close()
+            # Close region-specific JWT managers
+            for jwt_manager in self.jwt_managers.values():
+                await jwt_manager.close()
             await self.service_discovery.close()
             await self.cluster_discovery.close()
             await self.instance_discovery.close()
             await self.rpc_simulator.close()
+            await self.log_discovery.close()
             logger.info("Resources cleaned up successfully")
         except Exception as e:
             logger.error("Error during cleanup", error=str(e))

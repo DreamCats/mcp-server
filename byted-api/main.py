@@ -94,6 +94,10 @@ async def main():
         logger.info("  - check_jwt_status: Check JWT token status")
         logger.info("  - list_available_regions: List available regions")
         logger.info("  - search_multiple_services: Search multiple services")
+        logger.info("  - discover_clusters: Discover clusters for PSM")
+        logger.info("  - discover_instances: Discover instance addresses")
+        logger.info("  - simulate_rpc_request: Simulate RPC requests")
+        logger.info("  - query_logs_by_logid: Query logs by logid for US-TTP region")
 
         # Import uvicorn here to avoid import errors if not installed
         import uvicorn
