@@ -39,4 +39,6 @@ cd stock && ./start.sh -d
 
 MIT License
 
+hhh
+
 我简单测试一下 ga-gp 命令是否规范。 
