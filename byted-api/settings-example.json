@@ -1,0 +1,46 @@
+{
+  "github.copilot.chat.codeGeneration": {
+    "customModels": {
+      "deepseek-chat": {
+        "name": "DeepSeek Chat",
+        "url": "https://api.deepseek.com/v1",
+        "toolCalling": true,
+        "vision": false,
+        "maxInputTokens": 32000,
+        "maxOutputTokens": 4096
+      },
+      "qwen-plus": {
+        "name": "Qwen Plus",
+        "url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 30000,
+        "maxOutputTokens": 2048
+      },
+      "yi-large": {
+        "name": "Yi Large",
+        "url": "https://api.lingyiwanwu.com/v1",
+        "toolCalling": true,
+        "vision": false,
+        "maxInputTokens": 32000,
+        "maxOutputTokens": 4096
+      },
+      "moonshot-v1-8k": {
+        "name": "MoonShot v1 8K",
+        "url": "https://api.moonshot.cn/v1",
+        "toolCalling": true,
+        "vision": false,
+        "maxInputTokens": 8000,
+        "maxOutputTokens": 2048
+      },
+      "glm-4-plus": {
+        "name": "GLM-4 Plus",
+        "url": "https://open.bigmodel.cn/api/paas/v4",
+        "toolCalling": true,
+        "vision": true,
+        "maxInputTokens": 32000,
+        "maxOutputTokens": 4096
+      }
+    }
+  }
+}
