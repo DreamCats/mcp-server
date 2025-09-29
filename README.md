@@ -38,7 +38,3 @@ cd stock && ./start.sh -d
 ## 许可证
 
 MIT License
-
-hhh
-
-我简单测试一下 ga-gp 命令是否规范。同时增加了 gl-mg 命令。
