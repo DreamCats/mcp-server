@@ -1,22 +1,25 @@
 #!/bin/bash
 # status.sh - 检查 MCP 服务器状态
 
+# 获取脚本所在目录的绝对路径
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "MCP 服务器状态检查"
 echo "=================="
 
 # 检查 pid 文件是否存在
-if [ ! -f "mcp-server.pid" ]; then
+if [ ! -f "$SCRIPT_DIR/mcp-server.pid" ]; then
     echo "状态: ❌ 未运行（找不到 pid 文件）"
     exit 0
 fi
 
 # 读取进程 ID
-PID=$(cat mcp-server.pid)
+PID=$(cat "$SCRIPT_DIR/mcp-server.pid")
 
 # 检查进程是否存在
 if ! kill -0 $PID 2>/dev/null; then
     echo "状态: ❌ 未运行（进程不存在）"
-    echo "建议: 运行 ./stop.sh 清理状态"
+    echo "建议: 运行 $SCRIPT_DIR/stop.sh 清理状态"
     exit 0
 fi
 
@@ -27,15 +30,15 @@ echo "端口: ${MCP_PORT:-8200}"
 echo "环境变量 CAS_SESSION: $([ -n "$CAS_SESSION" ] && echo "已设置" || echo "未设置")"
 
 # 检查日志文件
-if [ -f "mcp-server.log" ]; then
-    LOG_SIZE=$(stat -f%z "mcp-server.log" 2>/dev/null || stat -c%s "mcp-server.log" 2>/dev/null || echo "0")
-    echo "日志文件: mcp-server.log (${LOG_SIZE} 字节)"
+if [ -f "$SCRIPT_DIR/mcp-server.log" ]; then
+    LOG_SIZE=$(stat -f%z "$SCRIPT_DIR/mcp-server.log" 2>/dev/null || stat -c%s "$SCRIPT_DIR/mcp-server.log" 2>/dev/null || echo "0")
+    echo "日志文件: $SCRIPT_DIR/mcp-server.log (${LOG_SIZE} 字节)"
 
     # 显示最后几行日志
     echo ""
     echo "最近日志:"
     echo "----------"
-    tail -n 5 mcp-server.log
+    tail -n 5 "$SCRIPT_DIR/mcp-server.log"
 else
     echo "日志文件: 不存在"
 fi
@@ -53,6 +56,6 @@ fi
 
 echo ""
 echo "常用命令:"
-echo "  查看完整日志: tail -f mcp-server.log"
-echo "  停止服务器: ./stop.sh"
-echo "  重启服务器: ./stop.sh && ./startup.sh"
+echo "  查看完整日志: tail -f $SCRIPT_DIR/mcp-server.log"
+echo "  停止服务器: $SCRIPT_DIR/stop.sh"
+echo "  重启服务器: $SCRIPT_DIR/stop.sh && $SCRIPT_DIR/startup.sh"
