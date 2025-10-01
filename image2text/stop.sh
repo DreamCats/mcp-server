@@ -2,7 +2,9 @@
 
 # image2text MCP服务器停止脚本
 
-PID_FILE="logs/server.pid"
+# 获取脚本所在目录的绝对路径
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PID_FILE="$SCRIPT_DIR/logs/server.pid"
 
 if [ -f "$PID_FILE" ]; then
     PID=$(cat "$PID_FILE")
