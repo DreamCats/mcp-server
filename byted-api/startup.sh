@@ -1,13 +1,6 @@
 #!/bin/bash
 # startup.sh - 后台启动 MCP 服务器
 
-# 检查必需环境变量
-if [ -z "$CAS_SESSION" ]; then
-    echo "错误: CAS_SESSION 环境变量未设置"
-    echo "请执行: export CAS_SESSION=\"your_cookie_value\""
-    exit 1
-fi
-
 # 检查虚拟环境是否存在
 if [ ! -d ".venv" ]; then
     echo "错误: 虚拟环境 .venv 不存在"
