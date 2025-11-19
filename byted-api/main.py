@@ -76,13 +76,6 @@ async def main():
         log_level=args.log_level
     )
 
-    # Check required environment variable
-    if not os.getenv("CAS_SESSION"):
-        logger.error("CAS_SESSION environment variable is not set")
-        logger.error("Please set it before starting the server:")
-        logger.error("export CAS_SESSION=\"your_cookie_value\"")
-        sys.exit(1)
-
     try:
         # Create and start server
         server = create_server()

@@ -6,208 +6,151 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **byted-api MCP (Model Context Protocol) tool** project that integrates with ByteDance's internal service discovery system. The tool provides JWT-based authentication and PSM (Product, Subsys, Module) service lookup capabilities.
 
-## Architecture
-
-### Core Components
-
-1. **JWT Authentication Layer** (`src/auth.py:16-116`)
-   - Retrieves JWT tokens from ByteDance auth service
-   - Uses `CAS_SESSION` cookie for authentication
-   - Base URL: `https://cloud.bytedance.net/auth/api/v1/jwt`
-
-2. **PSM Service Discovery** (`src/service_discovery.py`)
-   - Searches ByteDance Neptune service registry
-   - Requires JWT token in `x-jwt-token` header
-   - **Concurrent Requests**: Must query both regions simultaneously:
-     - `https://ms-neptune.byted.org/api/neptune/ms/service/search`
-     - `https://ms-neptune.tiktok-us.org/api/neptune/ms/service/search`
-   - Returns result from whichever endpoint has matching PSM for the keyword
-
-3. **Cluster Discovery** (`src/cluster_discovery.py`)
-   - Queries TikTok Row API to find clusters associated with a PSM
-   - Requires JWT token in `x-jwt-token` header
-   - Base URL: `https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/plane/clusters`
-   - Parameters: `psm`, `test_plane=1`, `env=prod`
-   - Returns cluster information including zone, IDC, and online status
-
-4. **Instance Address Discovery** (`src/instance_discovery.py`)
-   - Queries TikTok Row API to find machine instance addresses for a specific cluster
-   - Requires JWT token in `x-jwt-token` header
-   - Base URL: `https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/addrs`
-   - Parameters: `psm`, `env=prod`, `zone`, `idc`, `cluster`
-   - Returns array of instance addresses in format `[ip]:port`
-
-5. **i18n RPC Request Simulation** (`src/rpc_simulation.py`)
-   - Simulates RPC requests to i18n services using discovered instance addresses
-   - Requires JWT token in `x-jwt-token` header
-   - Base URL: `https://cloud.tiktok-row.net/api/v1/explorer/explorer/v5/rpc_request`
-   - Method: POST with comprehensive request body including:
-     - `address`: Target instance address (required)
-     - `cluster`: Cluster name (required, defaults to "default")
-     - `env`: Environment (required, defaults to "prod")
-     - `zone`: Geographic zone (required)
-     - `idc`: Data center identifier (required)
-     - `psm`: Service name (required)
-     - `func_name`: RPC method name (required)
-     - `req_body`: JSON request body (required)
-     - Additional parameters: `idl_source`, `idl_version`, `online`, `rpc_context`, `source`, `request_timeout`
-   - Returns RPC response with `resp_body`, performance metrics, and debug information
-
-6. **MCP Server Framework** (`src/mcp_server.py`)
-   - Uses FastMCP Python SDK for streamable HTTP transport
-   - Follows server-client-transport triad architecture
-   - Supports both JSON and SSE streaming responses
-
-## Development Commands
+## Essential Development Commands
 
 ### Environment Setup
 ```bash
-# Activate virtual environment
+# Activate virtual environment (required before any operations)
 source .venv/bin/activate
 
-# Install MCP dependencies (when requirements.txt is available)
-uv pip install mcp fastapi uvicorn httpx
+# Install dependencies
+pip install -r requirements.txt
 ```
 
-### Testing Authentication Flow
+### Running the Server
 ```bash
-# Test JWT token retrieval and PSM search
+# Production startup (recommended - background mode with logging)
+./startup.sh
+
+# Development mode (foreground)
+python main.py --port 8123
+
+# Check server status
+./status.sh
+
+# Stop server
+./stop.sh
+```
+
+### Testing Commands
+```bash
+# Run comprehensive integration tests
+python tests/test_comprehensive.py
+
+# Test specific modules
+python tests/test_mcp.py                    # Basic MCP functionality
+python tests/test_cluster_discovery.py      # Cluster discovery
+python tests/test_instance_discovery.py     # Instance address discovery
+python tests/test_rpc_simulation.py         # RPC request simulation
+python tests/test_error_handling.py         # Error handling
+python tests/test_multi_region_auth.py      # Multi-region authentication
+
+# Test authentication flow
 python test_mcp.py
 ```
 
-### Running MCP Server
+### Code Quality
 ```bash
-# Start streamable HTTP server (based on weather example from 诉求.md:114-120)
-python main.py --port 8123
+# Format code
+black src/ tests/
 
-# Or use startup script for background mode
-./startup.sh
+# Sort imports
+isort src/ tests/
 ```
 
-### Running Tests
+## High-Level Architecture
+
+### Core Service Flow
+1. **Authentication** → **Service Discovery** → **Cluster Discovery** → **Instance Discovery** → **RPC Simulation**
+2. All API calls require valid JWT tokens in `x-jwt-token` header
+3. Multi-region concurrent queries for reliability and performance
+
+### Key Components Integration
+
+```
+main.py (entry point)
+    ↓
+mcp_server.py (FastMCP framework)
+    ↓
+auth.py ←→ service_discovery.py ←→ cluster_discovery.py ←→ instance_discovery.py ←→ rpc_simulation.py
+    ↓
+ByteDance Internal APIs (Neptune, TikTok ROW)
+```
+
+### Critical Implementation Details
+
+**Multi-Region Architecture:**
+- CN Region: `https://ms-neptune.byted.org/api/neptune/ms/service/search`
+- US Region: `https://ms-neptune.tiktok-us.org/api/neptune/ms/service/search`
+- Concurrent queries to both regions, returns first valid result
+
+**Authentication Flow:**
+- JWT tokens retrieved from `https://cloud.bytedance.net/auth/api/v1/jwt`
+- Uses `CAS_SESSION` cookie from environment
+- Multi-region cookie support: `CAS_SESSION_cn`, `CAS_SESSION_i18n`, `CAS_SESSION_us`
+
+**API Integration Points:**
+- **Neptune Service Registry**: PSM service discovery (dual-region)
+- **TikTok ROW API**: Cluster/instance discovery and RPC simulation
+- **Authentication Service**: JWT token management
+
+### MCP Tools Architecture
+
+The server exposes 8 MCP tools through FastMCP framework:
+
+1. `search_psm_service` - Concurrent PSM search across regions
+2. `check_jwt_status` - JWT token validation and status
+3. `list_available_regions` - Available region configuration
+4. `search_multiple_services` - Batch PSM service search
+5. `discover_clusters` - TikTok ROW cluster discovery
+6. `discover_instances` - Instance address resolution
+7. `simulate_rpc_request` - RPC request simulation
+8. `query_logs_by_logid` - Log query for US-TTP region
+
+### Error Handling Strategy
+
+- **JWT Invalid**: Automatic retry with region-specific cookies
+- **Service Not Found**: Comprehensive search across both regions
+- **Network Issues**: Timeout handling with user-friendly messages
+- **Authentication Failures**: Clear guidance on cookie configuration
+
+### Production Deployment
+
+**Startup Script Features:**
+- Background process management with PID tracking
+- Automatic virtual environment activation
+- Comprehensive logging to `mcp-server.log`
+- Port configuration via `MCP_PORT` environment variable
+- Process lifecycle management (start/stop/status)
+
+**Environment Variables:**
 ```bash
-# Run comprehensive tests
-python test_comprehensive.py
-
-# Run specific module tests
-python test_cluster_discovery.py
-python test_instance_discovery.py
-python test_rpc_simulation.py
-python test_error_handling.py
+CAS_SESSION="your_cookie_value"     # Required: Main authentication cookie
+CAS_SESSION_cn="..."                # Optional: CN region specific
+CAS_SESSION_i18n="..."              # Optional: i18n region specific
+CAS_SESSION_us="..."                # Optional: US region specific
+MCP_PORT="8123"                     # Optional: Server port (default: 8123)
 ```
 
-## Key Implementation Patterns
+### Testing Strategy
 
-### Authentication Headers
-```python
-jwt_header = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/",
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
-    "Cookie": f"CAS_SESSION={cookie_value}"
-}
-```
+**Multi-layered testing approach:**
+1. **Unit Tests**: Individual component testing
+2. **Integration Tests**: Cross-component workflow testing
+3. **Multi-region Tests**: Authentication and service discovery across regions
+4. **Error Handling Tests**: Failure scenario validation
+5. **End-to-end Tests**: Complete workflow validation
 
-### Cluster Discovery Headers
-```python
-cluster_header = {
-    "accept": "application/json, text/plain, */*",
-    "x-jwt-token": jwt_token
-}
-```
+**Test Execution Pattern:**
+- Always activate virtual environment first
+- Run comprehensive tests before commits
+- Use specific test files for targeted debugging
+- Validate multi-region functionality for production readiness
 
-### MCP Tool Structure
-```python
-from mcp.server.fastmcp import FastMCP
-import asyncio
-import httpx
+### Security Considerations
 
-mcp = FastMCP(name="byted-api", json_response=False, stateless_http=False)
-
-@mcp.tool()
-async def get_service_info(keyword: str) -> str:
-    """Get service information from Neptune registry with concurrent region queries.
-
-    Args:
-        keyword: Service keyword to search for
-
-    Returns:
-        Service information from the region that has matching PSM
-    """
-    # Concurrent requests to both regions
-    # Implementation should query both URLs and return the one with matching PSM
-    return formatted_result
-
-@mcp.tool()
-async def get_clusters(psm: str) -> str:
-    """Get cluster information for a given PSM from TikTok Row API.
-
-    Args:
-        psm: Product, Subsys, Module identifier
-
-    Returns:
-        Cluster information including zone, IDC, and online status
-    """
-    # Query cluster information using psm
-    # Return formatted cluster details
-    return formatted_result
-
-@mcp.tool()
-async def get_instance_addresses(psm: str, zone: str, idc: str, cluster: str) -> str:
-    """Get instance addresses for a specific cluster from TikTok Row API.
-
-    Args:
-        psm: Product, Subsys, Module identifier
-        zone: Geographic zone identifier
-        idc: Data center identifier
-        cluster: Cluster name
-
-    Returns:
-        Array of instance addresses in format [ip]:port
-    """
-    # Query instance addresses using cluster parameters
-    # Return formatted address list
-    return formatted_result
-
-@mcp.tool()
-async def simulate_rpc_request(psm: str, address: str, func_name: str, req_body: str,
-                               zone: str, idc: str, cluster: str = "default", env: str = "prod") -> str:
-    """Simulate RPC request to i18n service using discovered instance address.
-
-    Args:
-        psm: Product, Subsys, Module identifier
-        address: Target instance address in format [ip]:port
-        func_name: RPC method name to call
-        req_body: JSON string request body
-        zone: Geographic zone identifier
-        idc: Data center identifier
-        cluster: Cluster name (defaults to "default")
-        env: Environment (defaults to "prod")
-
-    Returns:
-        RPC response including resp_body, performance metrics, and debug information
-    """
-    # Simulate RPC request with comprehensive request body
-    # Return formatted response with performance metrics and debug info
-    return formatted_result
-```
-
-## Configuration Files
-
-- **`.mcp.json`**: MCP server configurations for Lark, Context7, and Fetch services
-- **`.claude/settings.local.json`**: Claude-specific settings
-- **`.claude/agents/mcp-development-specialist.md`**: MCP development guidelines
-
-## External Dependencies
-
-- **ByteDance Internal APIs**: Authentication and service discovery
-- **Neptune Service Registry**: PSM service lookup (dual-region: byted.org and tiktok-us.org)
-- **TikTok Row APIs**: Cluster and instance address discovery
-- **FastMCP SDK**: MCP server implementation framework
-- **httpx**: For concurrent HTTP requests to multiple regions
-
-## Security Considerations
-
-- JWT tokens are retrieved from environment-specific cookie values
-- Service discovery requires valid JWT authentication
-- All API calls should include proper error handling and timeouts
+- JWT tokens are environment-specific and must be kept secure
+- All API calls use HTTPS with proper certificate validation
+- Cookie-based authentication requires valid ByteDance session
+- No credentials are logged or exposed in responses
+- Regional authentication isolation for security boundaries

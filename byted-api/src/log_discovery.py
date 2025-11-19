@@ -1,8 +1,8 @@
 """
-Log Discovery Module for ByteDance MCP Server
+字节跳动 MCP 服务器日志发现模块
 
-This module handles log query functionality for multiple regions (US-TTP and SEA) using logid.
-Supports concurrent region queries with intelligent region detection.
+本模块处理多区域（美区 US-TTP 和东南亚 SEA）的日志查询功能，通过 logid 进行日志搜索。
+支持并发区域查询和智能区域检测，提供统一的日志查询接口。
 """
 
 import asyncio
@@ -11,41 +11,52 @@ import httpx
 import structlog
 from datetime import datetime
 
+# 获取日志记录器实例
 logger = structlog.get_logger(__name__)
 
 
 class LogDiscovery:
-    """Log Discovery with JWT authentication for multiple regions"""
+    """
+    多区域日志发现器
 
-    # Region configuration
+    提供基于 JWT 认证的多区域日志查询功能，支持美区和国际化区域的并发查询。
+    该类封装了日志服务的 API 调用，提供统一的日志查询接口。
+    """
+
+    # 区域配置信息
+    # 定义不同区域的日志服务配置，包括 URL、显示名称、可用区域和默认虚拟区域
     REGION_CONFIGS = {
         "us": {
             "url": "https://logservice-tx.tiktok-us.org/streamlog/platform/microservice/v1/query/trace",
-            "display_name": "us Region",
-            "zones": ["US-TTP", "US-TTP2"],
-            "default_vregion": "US-TTP,US-TTP2"
+            "display_name": "美区",
+            "zones": ["US-TTP", "US-TTP2"],  # 美区可用区域
+            "default_vregion": "US-TTP,US-TTP2"  # 默认虚拟区域
         },
         "i18n": {
             "url": "https://logservice-sg.tiktok-row.org/streamlog/platform/microservice/v1/query/trace",
-            "display_name": "i18n Region (Singapore)",
-            "zones": ["Singapore-Common", "US-East", "Singapore-Central"],
-            "default_vregion": "Singapore-Common,US-East,Singapore-Central"
+            "display_name": "国际化区域（新加坡）",
+            "zones": ["Singapore-Common", "US-East", "Singapore-Central"],  # 国际化区域可用区域
+            "default_vregion": "Singapore-Common,US-East,Singapore-Central"  # 默认虚拟区域
         }
     }
 
     def __init__(self, jwt_managers: Dict[str, Any]):
         """
-        Initialize Log Discovery with multi-region JWT support
+        初始化日志发现器
 
-        Args:
-            jwt_managers: Dictionary mapping region keys to JWTAuthManager instances
-                         Expected keys: "us", "i18n" (can also include "cn" if needed)
+        使用多区域 JWT 管理器初始化日志发现器，配置 HTTP 客户端。
+
+        参数:
+            jwt_managers: 区域 JWT 管理器字典，将区域键映射到 JWTAuthManager 实例
+                         期望的键: "us", "i18n"（如果需要也可以包含 "cn"）
         """
+        # 保存 JWT 管理器实例
         self.jwt_managers = jwt_managers
 
-        # HTTP client configuration
+        # 配置 HTTP 客户端
+        # 设置超时时间和请求头，模拟浏览器行为以避免被拦截
         self.client = httpx.AsyncClient(
-            timeout=30.0,
+            timeout=30.0,  # 30秒超时
             headers={
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0",
                 "Accept": "application/json, text/plain, */*",
@@ -58,96 +69,106 @@ class LogDiscovery:
                                 scan_time_min: int = 10,
                                 region: str = "all") -> Dict[str, Any]:
         """
-        Query logs by logid with multi-region support
+        根据日志 ID 查询日志（支持多区域）
 
-        Args:
-            logid: Log ID to search for
-            psm_list: List of PSM services to filter (optional)
-            scan_time_min: Scan time range in minutes (default: 10)
-            region: Target region - "auto", "US-TTP", "SEA" (default: "auto")
+        根据提供的日志 ID，在指定区域或所有区域中查询相关日志信息。
+        支持 PSM 服务过滤和时间范围限制。
 
-        Returns:
-            Log query results including items with message details
+        参数:
+            logid: 要搜索的日志 ID
+            psm_list: PSM 服务列表用于过滤（可选）
+            scan_time_min: 扫描时间范围（分钟，默认：10）
+            region: 目标区域 - "all"（所有区域）、"us"（美区）、"i18n"（国际化区域）（默认："all"）
 
-        Raises:
-            RuntimeError: If log query fails
+        返回:
+            日志查询结果，包含消息详情的项目列表
+
+        异常:
+            RuntimeError: 如果日志查询失败
         """
-        logger.info("Querying logs by logid", logid=logid, psm_list=psm_list,
+        logger.info("开始查询日志", logid=logid, psm_list=psm_list,
                    scan_time_min=scan_time_min, region=region)
 
-        # Determine target regions
+        # 确定要查询的目标区域
         if region == "all":
+            # 查询所有配置的区域
             regions_to_query = list(self.REGION_CONFIGS.keys())
         elif region in self.REGION_CONFIGS:
+            # 只查询指定的单个区域
             regions_to_query = [region]
         else:
-            # Fallback to all regions for unknown region parameter
+            # 对于未知的区域参数，回退到查询所有区域
+            logger.warning(f"未知区域参数: {region}，将查询所有区域")
             regions_to_query = list(self.REGION_CONFIGS.keys())
 
-        # Query single or multiple regions based on configuration
+        # 根据配置查询单个或多个区域
         if len(regions_to_query) == 1:
+            # 只查询一个区域
             return await self.query_single_region(
                 regions_to_query[0], logid, psm_list, scan_time_min
             )
         else:
+            # 查询多个区域
             return await self.query_all_regions(logid, psm_list, scan_time_min)
 
     async def query_single_region(self, region_key: str, logid: str, psm_list: Optional[List[str]] = None,
                                   scan_time_min: int = 10) -> Dict[str, Any]:
         """
-        Query logs from a single region
+        查询单个区域的日志
 
-        Args:
-            region_key: Region key from REGION_CONFIGS
-            logid: Log ID to search for
-            psm_list: List of PSM services to filter (optional)
-            scan_time_min: Scan time range in minutes (default: 10)
+        在指定的单个区域中查询日志信息，使用该区域对应的 JWT 认证。
 
-        Returns:
-            Log query results
+        参数:
+            region_key: 区域键，来自 REGION_CONFIGS 配置
+            logid: 要搜索的日志 ID
+            psm_list: PSM 服务列表用于过滤（可选）
+            scan_time_min: 扫描时间范围（分钟，默认：10）
+
+        返回:
+            日志查询结果
         """
+        # 获取区域配置信息
         config = self.REGION_CONFIGS[region_key]
         region_url = config["url"]
         default_vregion = config["default_vregion"]
 
-        # Use provided vregion or region default
+        # 记录查询日志
+        logger.info("开始查询单个区域", region=region_key, logid=logid, vregion=default_vregion)
 
-        logger.info("Querying single region", region=region_key, logid=logid, vregion=default_vregion)
-
-        # Get JWT token for the specific region
+        # 获取特定区域的 JWT 令牌
         jwt_manager = self.jwt_managers.get(region_key)
         if not jwt_manager:
-            logger.error(f"No JWT manager configured for region: {region_key}")
-            raise RuntimeError(f"No JWT manager configured for region: {region_key}")
+            logger.error(f"未配置 JWT 管理器用于区域: {region_key}")
+            raise RuntimeError(f"未配置 JWT 管理器用于区域: {region_key}")
 
+        # 异步获取 JWT 令牌
         jwt_token = await jwt_manager.get_jwt_token()
 
-        # Prepare request body
+        # 准备请求体
         request_body = {
-            "logid": logid,
-            "psm_list": psm_list if psm_list else [],
-            "scan_span_in_min": scan_time_min,
-            "vregion": default_vregion
+            "logid": logid,  # 日志 ID
+            "psm_list": psm_list if psm_list else [],  # PSM 列表，如果为空则传空数组
+            "scan_span_in_min": scan_time_min,  # 扫描时间跨度（分钟）
+            "vregion": default_vregion  # 虚拟区域
         }
 
-        # Prepare headers
+        # 准备请求头
         headers = {
-            "X-Jwt-Token": jwt_token,
+            "X-Jwt-Token": jwt_token,  # JWT 认证令牌
             "accept": "application/json, text/plain, */*",
             "Content-Type": "application/json",
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0"
         }
 
         try:
-            # logger.debug("Querying log service API", region=region_key, url=region_url,
-            #             logid=logid, headers=headers, body=request_body)
-
+            # 发送 HTTP POST 请求到日志服务 API
             response = await self.client.post(region_url, headers=headers, json=request_body)
-            response.raise_for_status()
+            response.raise_for_status()  # 检查 HTTP 状态码
 
+            # 解析响应数据
             data = response.json()
 
-            # Format response with region information
+            # 格式化响应结果，包含区域信息
             result = {
                 "logid": logid,
                 "region": region_key,
@@ -156,161 +177,182 @@ class LogDiscovery:
                 "timestamp": datetime.now().isoformat()
             }
 
-            # Count log items
+            # 统计日志项目数量
             items_count = len(data.get("data", {}).get("items", [])) if isinstance(data, dict) and "data" in data else 0
-            logger.info("Log query completed", region=region_key, logid=logid,
+            logger.info("日志查询完成", region=region_key, logid=logid,
                        items_found=items_count, status_code=response.status_code)
             return result
 
         except httpx.TimeoutException:
-            logger.warning("Log query timeout", region=region_key, logid=logid)
-            raise RuntimeError(f"Timeout while querying logs for logid: {logid} in region {region_key}")
+            # 处理超时异常
+            logger.warning("日志查询超时", region=region_key, logid=logid)
+            raise RuntimeError(f"查询日志超时，日志ID: {logid}，区域: {region_key}")
 
         except httpx.HTTPError as e:
-            logger.error("Log query HTTP error", region=region_key, logid=logid,
+            # 处理 HTTP 错误
+            logger.error("日志查询 HTTP 错误", region=region_key, logid=logid,
                         error=str(e), error_type=type(e).__name__)
-            raise RuntimeError(f"HTTP error while querying logs for logid {logid} in region {region_key}: {e}")
+            raise RuntimeError(f"查询日志 HTTP 错误，日志ID: {logid}，区域: {region_key}: {e}")
 
         except Exception as e:
-            logger.error("Log query unexpected error", region=region_key, logid=logid,
+            # 处理其他异常
+            logger.error("日志查询意外错误", region=region_key, logid=logid,
                         error=str(e), error_type=type(e).__name__)
-            raise RuntimeError(f"Unexpected error while querying logs for logid {logid} in region {region_key}: {e}")
+            raise RuntimeError(f"查询日志意外错误，日志ID: {logid}，区域: {region_key}: {e}")
 
     async def query_all_regions(self, logid: str, psm_list: Optional[List[str]] = None,
                               scan_time_min: int = 10, vregion: str = "") -> Dict[str, Any]:
         """
-        Query logs from all regions concurrently
+        并发查询所有区域的日志
 
-        Args:
-            logid: Log ID to search for
-            psm_list: List of PSM services to filter (optional)
-            scan_time_min: Scan time range in minutes (default: 10)
-            vregion: Virtual region to search
+        同时在所有配置的区域中查询日志信息，返回最佳结果。
 
-        Returns:
-            Combined log query results from all regions
+        参数:
+            logid: 要搜索的日志 ID
+            psm_list: PSM 服务列表用于过滤（可选）
+            scan_time_min: 扫描时间范围（分钟，默认：10）
+            vregion: 虚拟区域搜索
+
+        返回:
+            所有区域的合并日志查询结果
         """
-        logger.info("Querying all regions concurrently", logid=logid, psm_list=psm_list,
+        logger.info("开始并发查询所有区域", logid=logid, psm_list=psm_list,
                    scan_time_min=scan_time_min, vregion=vregion)
 
-        # Create concurrent tasks for all regions
+        # 为所有区域创建并发任务
         tasks = []
         for region_key in self.REGION_CONFIGS.keys():
+            # 为每个区域创建查询任务
             task = self.query_single_region(region_key, logid, psm_list, scan_time_min)
             tasks.append(task)
 
-        # Execute concurrent requests
+        # 执行并发请求
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Process results and select best one
+        # 处理结果并选择最佳结果
         return self._select_best_result(results, logid)
 
     def _select_best_result(self, results: List[Any], logid: str) -> Dict[str, Any]:
         """
-        Select the best result from multiple region queries
+        从多个区域查询结果中选择最佳结果
 
-        Args:
-            results: List of results from different regions
-            logid: Log ID that was queried
+        分析所有区域的查询结果，优先返回包含日志消息的结果。
+        如果所有区域都未找到日志，则返回第一个结果。
 
-        Returns:
-            Best result with region information
+        参数:
+            results: 来自不同区域的查询结果列表
+            logid: 被查询的日志 ID
+
+        返回:
+            包含区域信息的最佳结果
         """
-        valid_results = []
-        errors = []
+        valid_results = []  # 存储有效的查询结果
+        errors = []  # 存储错误信息
 
+        # 遍历所有结果，分类处理
         for i, result in enumerate(results):
             if isinstance(result, Exception):
+                # 记录异常结果
                 errors.append(str(result))
-                logger.warning(f"Region query failed", region_index=i, error=str(result))
+                logger.warning(f"区域查询失败", region_index=i, error=str(result))
             elif isinstance(result, dict) and "data" in result:
-                # Check if we found any log messages
+                # 检查是否找到了日志消息
                 data = result.get("data", {})
                 items_count = len(data.get("data", {}).get("items", [])) if isinstance(data, dict) and "data" in data else 0
                 if items_count > 0:
+                    # 找到了日志，添加到有效结果列表
                     valid_results.append(result)
-                    logger.info(f"Region found logs", region=result.get("region"), items_count=items_count)
+                    logger.info(f"区域找到日志", region=result.get("region"), items_count=items_count)
                 else:
-                    logger.info(f"Region found no logs", region=result.get("region"))
+                    # 没有找到日志，但仍为有效响应
+                    logger.info(f"区域未找到日志", region=result.get("region"))
 
-        # Return best result (first one with logs) or fallback
+        # 返回最佳结果（优先选择有日志的结果）或回退结果
         if valid_results:
+            # 选择第一个包含日志的结果作为最佳结果
             best_result = valid_results[0]
-            logger.info("Selected best region result", region=best_result.get("region"),
+            logger.info("选择最佳区域结果", region=best_result.get("region"),
                        total_regions_queried=len(results), successful_regions=len(valid_results))
             return best_result
         elif errors:
-            # If all failed, return error from first failed region
-            logger.error("All region queries failed", logid=logid, errors_count=len(errors))
-            raise RuntimeError(f"All region queries failed for logid {logid}: {errors[0]}")
+            # 如果所有区域都失败了，返回第一个错误信息
+            logger.error("所有区域查询失败", logid=logid, errors_count=len(errors))
+            raise RuntimeError(f"所有区域查询失败，日志ID: {logid}: {errors[0]}")
         else:
-            # All succeeded but no logs found
-            logger.warning("No logs found in any region", logid=logid)
-            # Return first result with empty data
+            # 所有区域都成功但未找到日志
+            logger.warning("所有区域都未找到日志", logid=logid)
+            # 返回第一个结果（空数据）
             if results and isinstance(results[0], dict):
                 return results[0]
             else:
+                # 构造一个空的默认结果
                 return {
                     "logid": logid,
                     "region": "unknown",
-                    "region_display_name": "Unknown Region",
+                    "region_display_name": "未知区域",
                     "data": {"data": {"items": []}},
                     "timestamp": datetime.now().isoformat()
                 }
 
     def extract_log_messages(self, log_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Extract log messages from the API response
+        从 API 响应中提取日志消息
 
-        Args:
-            log_data: Raw log data from API response
+        解析日志服务返回的原始数据，提取关键的日志消息信息。
+        重点关注 _msg 字段，这是日志的主要内容字段。
 
-        Returns:
-            List of extracted log messages with key information
+        参数:
+            log_data: 来自 API 响应的原始日志数据
+
+        返回:
+            提取的日志消息列表，包含关键信息
         """
-        messages = []
+        messages = []  # 存储提取的日志消息
 
+        # 验证数据格式
         if not isinstance(log_data, dict) or "data" not in log_data:
             return messages
 
+        # 获取数据内容
         data = log_data.get("data", {})
-        items = data.get("items", [])
+        items = data.get("items", [])  # 日志项目列表
 
+        # 遍历每个日志项目
         for item in items:
             if not isinstance(item, dict):
-                continue
+                continue  # 跳过非字典格式的项目
 
-            # Extract basic item information
+            # 提取基本的项目信息
             item_info = {
-                "id": item.get("id", ""),
-                "group": item.get("group", {}),
-                "values": []
+                "id": item.get("id", ""),  # 项目 ID
+                "group": item.get("group", {}),  # 分组信息（包含 PSM、Pod 等）
+                "values": []  # 存储提取的值
             }
 
-            # Extract values from kv_list
+            # 从 kv_list 中提取值
             values = item.get("value", [])
             for value in values:
                 if not isinstance(value, dict):
                     continue
 
-                kv_list = value.get("kv_list", [])
+                kv_list = value.get("kv_list", [])  # 键值对列表
                 for kv in kv_list:
                     if not isinstance(kv, dict):
                         continue
 
-                    key = kv.get("key", "")
-                    value_str = kv.get("value", "")
+                    key = kv.get("key", "")  # 键
+                    value_str = kv.get("value", "")  # 值
 
-                    # Focus on _msg field as specified in requirements
+                    # 重点关注 _msg 字段（日志消息内容）
                     if key == "_msg":
                         item_info["values"].append({
                             "key": key,
                             "value": value_str,
-                            "type": kv.get("type", ""),
-                            "highlight": kv.get("highlight", False)
+                            "type": kv.get("type", ""),  # 值类型
+                            "highlight": kv.get("highlight", False)  # 是否高亮显示
                         })
 
-            # Only include items that have _msg values
+            # 只包含有 _msg 值的项目
             if item_info["values"]:
                 messages.append(item_info)
 
@@ -319,118 +361,145 @@ class LogDiscovery:
     async def get_log_details(self, logid: str, psm_list: Optional[List[str]] = None,
                             scan_time_min: int = 10, region: str = "all") -> Dict[str, Any]:
         """
-        Get detailed log information for a specific logid
+        获取特定日志 ID 的详细日志信息
 
-        Args:
-            logid: Log ID to search for
-            psm_list: List of PSM services to filter (optional)
-            scan_time_min: Scan time range in minutes (default: 10)
-            vregion: Virtual region to search (default: "")
+        查询日志并提取详细的消息内容，包括元数据和标签信息。
 
-        Returns:
-            Detailed log information with extracted messages
+        参数:
+            logid: 要搜索的日志 ID
+            psm_list: PSM 服务列表用于过滤（可选）
+            scan_time_min: 扫描时间范围（分钟，默认：10）
+            region: 目标区域（默认："all"）
+
+        返回:
+            包含提取消息的详细日志信息
         """
+        # 查询日志数据
         result = await self.query_logs_by_logid(logid, psm_list, scan_time_min, region)
 
-        # Extract log messages
+        # 获取数据内容
         data = result.get("data", {})
+
+        # 提取日志消息
         messages = self.extract_log_messages(data)
 
-        # Get metadata
+        # 获取元数据信息
         meta = data.get("meta", {}) if isinstance(data, dict) else {}
         tag_infos = data.get("tag_infos", []) if isinstance(data, dict) else []
 
+        # 返回结构化的日志详细信息
         return {
-            "logid": logid,
-            "messages": messages,
-            "meta": meta,
-            "tag_infos": tag_infos,
-            "total_items": len(messages),
-            "scan_time_range": meta.get("scan_time_range", []),
-            "level_list": meta.get("level_list", []),
-            "timestamp": result.get("timestamp", "Unknown")
+            "logid": logid,  # 日志 ID
+            "messages": messages,  # 提取的日志消息
+            "meta": meta,  # 元数据
+            "tag_infos": tag_infos,  # 标签信息
+            "total_items": len(messages),  # 消息总数
+            "scan_time_range": meta.get("scan_time_range", []),  # 扫描时间范围
+            "level_list": meta.get("level_list", []),  # 日志级别列表
+            "timestamp": result.get("timestamp", "Unknown"),  # 查询时间戳
+            "region": result.get("region", "unknown"),  # 区域信息
+            "region_display_name": result.get("region_display_name", "未知区域")  # 区域显示名称
         }
 
     def format_log_response(self, log_details: Dict[str, Any]) -> str:
         """
-        Format log details into a readable response with region information
+        格式化日志详情为可读响应
 
-        Args:
-            log_details: Detailed log information
+        将详细的日志信息格式化为用户友好的字符串响应，包含区域信息和消息详情。
 
-        Returns:
-            Formatted string response
+        参数:
+            log_details: 详细的日志信息
+
+        返回:
+            格式化的字符串响应
         """
+        # 提取日志详情信息
         messages = log_details.get("messages", [])
         total_items = log_details.get("total_items", 0)
         logid = log_details.get("logid", "Unknown")
         scan_time_range = log_details.get("scan_time_range", [])
         region = log_details.get("region", "unknown")
-        region_display_name = log_details.get("region_display_name", "Unknown Region")
+        region_display_name = log_details.get("region_display_name", "未知区域")
 
+        # 构建响应字符串
         response = f"""
-📋 **Log Query Results**
-🔍 **Log ID**: {logid}
-🌍 **Region**: {region_display_name} ({region})
-📊 **Total Messages**: {total_items}
+📋 **日志查询结果**
+🔍 **日志 ID**: {logid}
+🌍 **查询区域**: {region_display_name} ({region})
+📊 **消息总数**: {total_items}
 """
 
-        # Add scan time range information
+        # 添加扫描时间范围信息
         if scan_time_range:
-            response += "⏰ **Scan Time Ranges**:\n"
+            response += "⏰ **扫描时间范围**:\n"
             for i, time_range in enumerate(scan_time_range, 1):
-                start_time = datetime.fromtimestamp(time_range.get("start", 0)).strftime("%Y-%m-%d %H:%M:%S") if time_range.get("start") else "Unknown"
-                end_time = datetime.fromtimestamp(time_range.get("end", 0)).strftime("%Y-%m-%d %H:%M:%S") if time_range.get("end") else "Unknown"
-                response += f"  Range {i}: {start_time} to {end_time}\n"
+                # 格式化时间戳
+                start_time = datetime.fromtimestamp(time_range.get("start", 0)).strftime("%Y-%m-%d %H:%M:%S") if time_range.get("start") else "未知"
+                end_time = datetime.fromtimestamp(time_range.get("end", 0)).strftime("%Y-%m-%d %H:%M:%S") if time_range.get("end") else "未知"
+                response += f"  范围 {i}: {start_time} 到 {end_time}\n"
 
-        # Add log messages
+        # 添加日志消息详情
         if messages:
-            response += "\n📝 **Log Messages**:\n"
+            response += "\n📝 **日志消息详情**:\n"
             for i, message in enumerate(messages, 1):
+                # 提取分组信息
                 group = message.get("group", {})
-                psm = group.get("psm", "Unknown")
-                pod_name = group.get("pod_name", "Unknown")
-                ipv4 = group.get("ipv4", "Unknown")
-                env = group.get("env", "Unknown")
-                vregion = group.get("vregion", "Unknown")
-                idc = group.get("idc", "Unknown")
+                psm = group.get("psm", "未知")
+                pod_name = group.get("pod_name", "未知")
+                ipv4 = group.get("ipv4", "未知")
+                env = group.get("env", "未知")
+                vregion = group.get("vregion", "未知")
+                idc = group.get("idc", "未知")
 
-                response += f"\n--- Message {i} ---\n"
+                response += f"\n--- 消息 {i} ---\n"
                 response += f"  🏷️ **PSM**: {psm}\n"
                 response += f"  🐳 **Pod**: {pod_name}\n"
-                response += f"  🌐 **IP**: {ipv4}\n"
-                response += f"  🌍 **Virtual Region**: {vregion}\n"
+                response += f"  🌐 **IP 地址**: {ipv4}\n"
+                response += f"  🌍 **虚拟区域**: {vregion}\n"
                 response += f"  🏢 **IDC**: {idc}\n"
-                response += f"  🔧 **Environment**: {env}\n"
+                response += f"  🔧 **环境**: {env}\n"
 
-                # Add message values
+                # 添加消息内容
                 values = message.get("values", [])
                 for value in values:
                     if value.get("key") == "_msg":
-                        response += f"  💬 **Message**: {value.get('value', 'No message')}\n"
+                        response += f"  💬 **消息内容**: {value.get('value', '无消息内容')}\n"
                         if value.get("highlight"):
-                            response += "  ✨ **Highlighted**: Yes\n"
+                            response += "  ✨ **高亮显示**: 是\n"
         else:
-            response += "\n❌ **No log messages found**\n"
+            response += "\n❌ **未找到日志消息**\n"
 
-        # Add timestamp
-        response += f"\n⏰ **Query Time**: {log_details.get('timestamp', 'Unknown')}"
+        # 添加查询时间戳
+        response += f"\n⏰ **查询时间**: {log_details.get('timestamp', '未知')}"
 
         return response.strip()
 
     async def close(self):
-        """Close HTTP client and all JWT managers"""
+        """
+        关闭 HTTP 客户端和所有 JWT 管理器
+
+        清理资源，关闭 HTTP 连接和所有的 JWT 认证管理器。
+        """
+        # 关闭 HTTP 客户端连接
         await self.client.aclose()
-        # Close all JWT managers
+
+        # 关闭所有 JWT 管理器
         for jwt_manager in self.jwt_managers.values():
             await jwt_manager.close()
 
     def __del__(self):
-        """Cleanup when object is destroyed"""
+        """
+        对象销毁时的清理工作
+
+        在对象被垃圾回收时尝试关闭 HTTP 客户端连接。
+        """
         try:
+            # 检查是否存在客户端属性
             if hasattr(self, 'client'):
                 import asyncio
+                # 如果事件循环正在运行，则异步关闭客户端
                 if asyncio.get_event_loop().is_running():
                     asyncio.create_task(self.client.aclose())
         except Exception:
+            # 忽略清理过程中的任何异常
             pass

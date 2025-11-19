@@ -1,7 +1,8 @@
 """
-JWT Authentication Module for ByteDance MCP Server
+字节跳动 MCP 服务器 JWT 认证模块
 
-This module handles JWT token acquisition and management for ByteDance internal APIs.
+本模块处理字节跳动内部 API 的 JWT 令牌获取和管理，支持多区域认证配置。
+提供基于 Cookie 的 JWT 认证功能，支持自动令牌刷新和过期检测。
 """
 
 import os
@@ -12,70 +13,92 @@ import structlog
 from pathlib import Path
 from dotenv import load_dotenv
 
+# 获取日志记录器实例
 logger = structlog.get_logger(__name__)
 
-# Load environment variables from .env file in project root
+# 从项目根目录加载 .env 文件
 def load_env_file():
-    """Load .env file from project root directory"""
+    """
+    从项目根目录加载 .env 环境变量文件
+
+    该函数会在模块导入时自动执行，加载项目根目录下的 .env 文件。
+    如果文件不存在，会记录警告信息。
+    """
     try:
-        # Find project root (assuming src/auth.py structure)
+        # 查找项目根目录（假设是 src/auth.py 的父目录）
         project_root = Path(__file__).parent.parent
         env_file = project_root / ".env"
 
         if env_file.exists():
+            # 加载环境变量文件
             load_dotenv(env_file)
-            logger.info("Loaded environment variables from .env file", env_file=str(env_file))
+            logger.info("成功从 .env 文件加载环境变量", env_file=str(env_file))
         else:
-            logger.warning("No .env file found in project root", project_root=str(project_root))
+            logger.warning("在项目根目录未找到 .env 文件", project_root=str(project_root))
     except Exception as e:
-        logger.error("Failed to load .env file", error=str(e))
+        logger.error("加载 .env 文件失败", error=str(e))
 
-# Load .env file when module is imported
+# 模块导入时自动加载 .env 文件
 load_env_file()
 
 
 class JWTAuthManager:
-    """JWT Token Manager for ByteDance Authentication with Multi-Region Support"""
+    """
+    JWT 认证管理器
 
-    # Region-specific auth endpoints
+    提供字节跳动内部 API 的 JWT 令牌管理功能，支持多区域认证配置。
+    该类负责获取、缓存和刷新 JWT 令牌，支持基于 Cookie 的认证方式。
+    """
+
+    # 区域特定的认证端点配置
+    # 定义不同区域的 JWT 认证服务 URL
     REGION_AUTH_URLS = {
-        "cn": "https://cloud.bytedance.net/auth/api/v1/jwt",
-        "i18n": "https://cloud-i18n.bytedance.net/auth/api/v1/jwt",
-        "us": "https://cloud-ttp-us.bytedance.net/auth/api/v1/jwt"
+        "cn": "https://cloud.bytedance.net/auth/api/v1/jwt",      # 中国区
+        "i18n": "https://cloud-i18n.bytedance.net/auth/api/v1/jwt",  # 国际化区
+        "us": "https://cloud-ttp-us.bytedance.net/auth/api/v1/jwt"    # 美区
     }
 
     def __init__(self, cookie_value: Optional[str] = None, region: str = "cn"):
         """
-        Initialize JWT Auth Manager
+        初始化 JWT 认证管理器
 
-        Args:
-            cookie_value: CAS_SESSION cookie value, defaults to region-specific env var
-            region: Region identifier ("cn", "i18n", "us"), defaults to "cn"
+        根据提供的 Cookie 值和区域标识符初始化认证管理器。
+        如果没有提供 Cookie 值，会尝试从环境变量中获取。
+
+        参数:
+            cookie_value: CAS_SESSION Cookie 值，如果为 None 则使用区域特定的环境变量
+            region: 区域标识符 ("cn"、"i18n"、"us")，默认为 "cn"
+
+        异常:
+            ValueError: 如果无法获取到有效的 Cookie 值
         """
-        # Use region-specific cookie value if not provided
+        # 使用提供的 Cookie 值或从环境变量获取
         if cookie_value:
             self.cookie_value = cookie_value
         else:
-            # Try region-specific environment variable first
+            # 首先尝试获取区域特定的环境变量
             region_cookie_var = f"CAS_SESSION_{region}"
             self.cookie_value = os.getenv(region_cookie_var)
 
-            # Fallback to generic CAS_SESSION if region-specific not found
+            # 如果区域特定的环境变量不存在，回退到通用的 CAS_SESSION
             if not self.cookie_value:
                 self.cookie_value = os.getenv("CAS_SESSION")
 
+        # 验证 Cookie 值是否存在
         if not self.cookie_value:
-            raise ValueError(f"CAS_SESSION cookie value is required for region {region}. "
-                           f"Please set {region_cookie_var} or CAS_SESSION environment variable")
+            raise ValueError(f"区域 {region} 需要 CAS_SESSION Cookie 值。"
+                           f"请设置 {region_cookie_var} 或 CAS_SESSION 环境变量")
 
-        self.region = region
-        self.jwt_token: Optional[str] = None
-        self.expires_at: Optional[float] = None
-        self.auth_url = self.REGION_AUTH_URLS.get(region, self.REGION_AUTH_URLS["cn"])
+        # 初始化属性
+        self.region = region  # 区域标识
+        self.jwt_token: Optional[str] = None  # JWT 令牌
+        self.expires_at: Optional[float] = None  # 令牌过期时间
+        self.auth_url = self.REGION_AUTH_URLS.get(region, self.REGION_AUTH_URLS["cn"])  # 认证 URL
 
-        # HTTP client with proper timeout and headers
+        # 配置 HTTP 客户端
+        # 设置合适的超时时间和请求头，模拟浏览器行为
         self.client = httpx.AsyncClient(
-            timeout=30.0,
+            timeout=30.0,  # 30秒超时
             headers={
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/",
                 "Accept": "application/json, text/plain, */*",
@@ -86,73 +109,96 @@ class JWTAuthManager:
 
     async def get_jwt_token(self, force_refresh: bool = False) -> str:
         """
-        Get JWT token, refresh if necessary
+        获取 JWT 令牌，必要时进行刷新
 
-        Args:
-            force_refresh: Force token refresh even if current token is valid
+        如果当前令牌有效且未强制刷新，则返回缓存的令牌。
+        否则，向认证服务请求新的 JWT 令牌。
 
-        Returns:
-            JWT token string
+        参数:
+            force_refresh: 即使当前令牌有效也强制刷新
 
-        Raises:
-            RuntimeError: If token acquisition fails
+        返回:
+            JWT 令牌字符串
+
+        异常:
+            RuntimeError: 如果令牌获取失败
         """
+        # 如果令牌有效且未强制刷新，使用缓存的令牌
         if not force_refresh and self.is_token_valid():
-            logger.debug("Using cached JWT token")
+            logger.debug("使用缓存的 JWT 令牌")
             return self.jwt_token
 
-        logger.info("Acquiring new JWT token")
+        logger.info("正在获取新的 JWT 令牌")
 
         try:
+            # 准备认证请求头，包含 Cookie 信息
             headers = {
                 "Cookie": f"CAS_SESSION={self.cookie_value}"
             }
 
+            # 发送 GET 请求到认证服务
             response = await self.client.get(self.auth_url, headers=headers)
-            response.raise_for_status()
+            response.raise_for_status()  # 检查 HTTP 状态码
 
-            # JWT token is in response headers
+            # JWT 令牌在响应头中
             self.jwt_token = response.headers.get("x-jwt-token")
             if not self.jwt_token:
-                raise RuntimeError("No JWT token in response headers")
+                raise RuntimeError("响应头中没有 JWT 令牌")
 
-            # Set expiration time (assuming 1 hour validity)
+            # 设置过期时间（假设令牌有效期为 1 小时）
             self.expires_at = time.time() + 3600
 
-            logger.info("JWT token acquired successfully")
+            logger.info("JWT 令牌获取成功")
             return self.jwt_token
 
         except httpx.HTTPError as e:
-            logger.error("HTTP error acquiring JWT token", error=str(e))
-            raise RuntimeError(f"Failed to acquire JWT token: {e}")
+            # 处理 HTTP 错误
+            logger.error("获取 JWT 令牌时发生 HTTP 错误", error=str(e))
+            raise RuntimeError(f"获取 JWT 令牌失败: {e}")
         except Exception as e:
-            logger.error("Unexpected error acquiring JWT token", error=str(e))
-            raise RuntimeError(f"Unexpected error: {e}")
+            # 处理其他异常
+            logger.error("获取 JWT 令牌时发生意外错误", error=str(e))
+            raise RuntimeError(f"意外错误: {e}")
 
     def is_token_valid(self) -> bool:
         """
-        Check if current token is valid
+        检查当前令牌是否有效
 
-        Returns:
-            True if token exists and is not expired
+        验证令牌是否存在且未过期。如果令牌将在 5 分钟内过期，也视为无效。
+
+        返回:
+            如果令牌存在且未过期返回 True，否则返回 False
         """
+        # 检查令牌和过期时间是否存在
         if not self.jwt_token or not self.expires_at:
             return False
 
-        # Check if token expires in less than 5 minutes
+        # 检查令牌是否在 5 分钟内过期
+        # 如果令牌将在 5 分钟内过期，提前刷新以避免使用过期令牌
         return time.time() < (self.expires_at - 300)
 
     async def close(self):
-        """Close HTTP client"""
+        """
+        关闭 HTTP 客户端
+
+        关闭 HTTP 客户端连接，释放资源。
+        """
         await self.client.aclose()
 
     def __del__(self):
-        """Cleanup when object is destroyed"""
+        """
+        对象销毁时的清理工作
+
+        在对象被垃圾回收时尝试关闭 HTTP 客户端连接。
+        注意：这是后备方案，正确的清理应该使用 close() 方法。
+        """
         try:
-            # Note: This is a fallback, proper cleanup should use close()
+            # 检查是否存在客户端属性
             if hasattr(self, 'client'):
                 import asyncio
+                # 如果事件循环正在运行，则异步关闭客户端
                 if asyncio.get_event_loop().is_running():
                     asyncio.create_task(self.client.aclose())
         except Exception:
+            # 忽略清理过程中的任何异常
             pass
