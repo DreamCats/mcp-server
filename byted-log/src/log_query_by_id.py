@@ -15,7 +15,7 @@ from datetime import datetime
 logger = structlog.get_logger(__name__)
 
 
-class LogQuery:
+class LogQueryByID:
     """
     多区域日志发现器
 
