@@ -19,23 +19,27 @@
 
 ```
 src/
-├── mcp_server.py      # 主 MCP 服务器和工具注册
-├── auth.py           # JWT 认证管理器
-├── log_query.py      # 日志发现和查询功能
-└── __init__.py       # 包初始化
+├── mcp_server.py           # 主 MCP 服务器和工具注册
+├── auth.py                # JWT 认证管理器
+├── log_query_by_id.py     # 基于日志ID的查询功能 (v1/trace API)
+├── log_query_by_keyword.py  # 基于关键词的查询功能 (v2/log API)
+└── __init__.py            # 包初始化
 
-main.py               # 服务器入口点和 HTTP 设置
-tests/                # 使用真实数据的综合测试套件
-scripts/              # 部署管理脚本
+main.py                    # 服务器入口点和 HTTP 设置
+tests/                     # 使用真实数据的综合测试套件
+scripts/                   # 部署管理脚本
+restart.sh                 # 服务重启脚本
 ```
 
 ## 🚀 功能特性
 
 ### 核心功能
-- ✅ **日志 ID 查询**: 跨区域按唯一 logid 查询日志
+- ✅ **日志 ID 查询**: 跨区域按唯一 logid 查询日志 (v1/trace API)
+- ✅ **关键词查询**: 基于关键词和时间范围的日志过滤查询 (v2/log API)
 - ✅ **多区域支持**: 美国和国际（新加坡）区域
 - ✅ **PSM 服务过滤**: 按产品服务模块（PSM）服务过滤
 - ✅ **基于时间的查询**: 可配置的扫描时间范围（默认：10 分钟）
+- ✅ **关键词过滤**: 支持包含和排除关键词，区分大小写
 - ✅ **并发处理**: 跨多个区域的并行查询
 
 ### 认证与安全
@@ -89,19 +93,23 @@ python main.py --host 0.0.0.0 --port 8080 --log-level INFO
 
 # 停止服务
 ./scripts/stop.sh
+
+# 重启服务
+./restart.sh
 ```
 
 ### MCP 工具使用
 
-服务器公开一个主要工具：`query_logs_by_logid`
+服务器公开两个主要工具：
 
-#### 参数说明：
+#### 1. `query_logs_by_logid` - 基于日志ID查询 (v1/trace API)
+**参数说明：**
 - `logid`（必需）：唯一日志标识符
 - `region`（必需）：目标区域（`us` 或 `i18n`）
 - `psm_list`（可选）：要过滤的 PSM 服务列表，逗号分隔
 - `scan_time_min`（可选）：扫描时间范围（分钟，默认：10）
 
-#### 使用示例：
+**使用示例：**
 ```python
 # 使用 MCP 客户端
 result = await mcp_client.call_tool(
@@ -111,6 +119,33 @@ result = await mcp_client.call_tool(
         "region": "us",
         "psm_list": "ttec.script.live_promotion_change",
         "scan_time_min": 10
+    }
+)
+```
+
+#### 2. `query_logs_by_keyword` - 基于关键词查询 (v2/log API)
+**参数说明：**
+- `region`（必需）：目标区域（`us` 或 `i18n`）
+- `psm_list`（必需）：要过滤的 PSM 服务列表，逗号分隔（必填）
+- `start_time`（可选）：开始时间戳（秒级，默认：1小时前）
+- `end_time`（可选）：结束时间戳（秒级，默认：当前时间）
+- `keyword_filter_include`（可选）：包含关键词列表，逗号分隔
+- `keyword_filter_exclude`（可选）：排除关键词列表，逗号分隔
+- `limit`（可选）：返回结果数量限制（默认：100，最大：1000）
+
+**使用示例：**
+```python
+# 查询包含错误关键词的日志
+result = await mcp_client.call_tool(
+    "query_logs_by_keyword",
+    {
+        "region": "us",
+        "psm_list": "ttec.script.live_promotion_change",
+        "start_time": 1704067200,  # 2024-01-01 00:00:00
+        "end_time": 1704153600,    # 2024-01-02 00:00:00
+        "keyword_filter_include": "error,exception,failed",
+        "keyword_filter_exclude": "debug,info",
+        "limit": 50
     }
 )
 ```
@@ -149,6 +184,8 @@ python tests/run_tests.py
 - ✅ 区域特定 Cookie 优先级
 - ✅ 多 PSM 服务支持
 - ✅ 异常处理和错误响应
+- ✅ 关键词查询功能测试
+- ✅ 时间范围查询测试
 
 ## 📋 配置说明
 
@@ -209,21 +246,23 @@ python tests/run_tests.py
 ```
 bytedance-log-mcp/
 ├── src/
-│   ├── mcp_server.py      # MCP 服务器实现
-│   ├── auth.py           # JWT 认证
-│   ├── log_query.py      # 日志查询逻辑
+│   ├── mcp_server.py           # MCP 服务器实现
+│   ├── auth.py                # JWT 认证
+│   ├── log_query_by_id.py     # 基于日志ID的查询逻辑 (v1/trace API)
+│   ├── log_query_by_keyword.py  # 基于关键词的查询逻辑 (v2/log API)
 │   └── __init__.py
 ├── tests/
 │   ├── test_real_data_workflow.py  # 主测试套件
-│   ├── conftest.py       # 测试配置
-│   └── run_tests.py      # 测试运行器
+│   ├── conftest.py           # 测试配置
+│   └── run_tests.py          # 测试运行器
 ├── scripts/
-│   ├── startup.sh        # 服务启动
-│   ├── stop.sh          # 服务停止
-│   └── status.sh        # 状态检查
-├── main.py              # 服务器入口
-├── requirements.txt     # 依赖包
-└── README.md           # 本文档
+│   ├── startup.sh            # 服务启动
+│   ├── stop.sh              # 服务停止
+│   └── status.sh            # 状态检查
+├── main.py                   # 服务器入口
+├── restart.sh                # 服务重启脚本
+├── requirements.txt          # 依赖包
+└── README.md                # 本文档
 ```
 
 ### 开发设置
@@ -259,12 +298,19 @@ flake8 src/ tests/
    - 有效区域：`us`、`i18n`
    - 检查区域参数拼写和大小写
 
-3. **未找到日志**
+3. **未找到日志（基于ID查询）**
    - 验证 logid 格式和存在性
    - 检查 scan_time_min 参数（如有需要可增加）
    - 验证 PSM 服务名称
 
-4. **服务启动问题**
+4. **未找到日志（基于关键词查询）**
+   - 检查关键词拼写是否正确
+   - 扩大时间范围（start_time, end_time）
+   - 验证 PSM 服务名称是否正确
+   - 尝试不同的虚拟区域（vregion）
+   - 调整关键词过滤条件
+
+5. **服务启动问题**
    - 检查端口可用性：`lsof -i :8080`
    - 验证 Python 依赖：`pip check`
    - 查看 `/tmp/mcp_server.log` 中的日志

@@ -17,20 +17,22 @@ This is a **ByteDance Log Query MCP Server** - a Model Context Protocol (MCP) se
 ### Directory Structure
 ```
 src/
-├── mcp_server.py      # Main MCP server and tool registration
-├── auth.py           # JWT authentication manager
-├── log_query.py      # Log discovery and query logic
+├── mcp_server.py           # Main MCP server and tool registration
+├── auth.py                # JWT authentication manager
+├── log_query_by_id.py     # Log discovery and query logic by ID (v1/trace API)
+├── log_query_by_keyword.py # Log query by keyword functionality (v2/log API)
 └── __init__.py
 
-tests/                 # Comprehensive test suite with real data
+tests/                     # Comprehensive test suite with real data
 ├── test_real_data_workflow.py  # Main test cases
-├── conftest.py       # Test configuration and fixtures
-└── pytest.ini        # Pytest configuration
+├── conftest.py           # Test configuration and fixtures
+└── pytest.ini           # Pytest configuration
 
-main.py               # Server entry point with HTTP setup
-startup.sh            # Production service management
-status.sh             # Service status checker
-stop.sh               # Service stop script
+main.py                   # Server entry point with HTTP setup
+startup.sh                # Production service management
+status.sh                 # Service status checker
+stop.sh                   # Service stop script
+restart.sh                # Service restart script
 ```
 
 ## Development Commands
@@ -92,15 +94,16 @@ export CAS_SESSION_I18N="your-international-session-cookie"  # International reg
 
 ## MCP Tool Usage
 
-The server exposes one main tool: `query_logs_by_logid`
+The server exposes two main tools:
 
-### Parameters
+### 1. `query_logs_by_logid` - Query by Log ID (v1/trace API)
+**Parameters:**
 - `logid` (required): Unique log identifier
 - `region` (required): Target region (`us` or `i18n`)
 - `psm_list` (optional): Comma-separated PSM service filters
 - `scan_time_min` (optional): Scan time range in minutes (default: 10)
 
-### Example Usage
+**Example:**
 ```python
 result = await mcp_client.call_tool(
     "query_logs_by_logid",
@@ -109,6 +112,32 @@ result = await mcp_client.call_tool(
         "region": "us",
         "psm_list": "ttec.script.live_promotion_change",
         "scan_time_min": 10
+    }
+)
+```
+
+### 2. `query_logs_by_keyword` - Query by Keywords (v2/log API)
+**Parameters:**
+- `region` (required): Target region (`us` or `i18n`)
+- `psm_list` (required): Comma-separated PSM service filters (mandatory)
+- `start_time` (optional): Start timestamp in seconds (default: 1 hour ago)
+- `end_time` (optional): End timestamp in seconds (default: current time)
+- `keyword_filter_include` (optional): Comma-separated keywords to include
+- `keyword_filter_exclude` (optional): Comma-separated keywords to exclude
+- `limit` (optional): Result limit (default: 100, max: 1000)
+
+**Example:**
+```python
+result = await mcp_client.call_tool(
+    "query_logs_by_keyword",
+    {
+        "region": "us",
+        "psm_list": "ttec.script.live_promotion_change",
+        "start_time": 1704067200,
+        "end_time": 1704153600,
+        "keyword_filter_include": "error,exception",
+        "keyword_filter_exclude": "debug,info",
+        "limit": 50
     }
 )
 ```
@@ -155,6 +184,21 @@ result = await mcp_client.call_tool(
 - Concurrent queries across multiple regions
 - JWT token caching to avoid repeated auth calls
 - Proper resource cleanup to prevent memory leaks
+
+## API Version Differences
+
+### v1/trace API (query_logs_by_logid)
+- **Endpoint**: `/streamlog/platform/microservice/v1/query/trace`
+- **Use Case**: Query specific logs by unique log ID
+- **Response Format**: Items with kv_list structure
+- **Key Fields**: `_msg` field extraction from kv_list
+
+### v2/log API (query_logs_by_keyword)
+- **Endpoint**: `/streamlog/platform/microservice/v2/query/log`
+- **Use Case**: Keyword-based log filtering with time ranges
+- **Response Format**: Content with messages structure
+- **Key Fields**: Multiple message fields with context_id
+- **Filters**: Include/exclude keyword filtering with case sensitivity
 
 ### Security Notes
 - Never commit CAS_SESSION cookies to version control
