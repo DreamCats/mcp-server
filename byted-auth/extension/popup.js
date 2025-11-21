@@ -27,17 +27,11 @@ function detectRegionFromUrl(url) {
 
   try {
     // Check for specific region patterns in the URL
-    if (url.includes('cloud-ttp-us.bytedance.net')) {
+    if (url.includes(LOGIN_URL_MAP.us)) {
       return 'us';
-    } else if (url.includes('cloud-i18n.bytedance.net')) {
+    } else if (url.includes(LOGIN_URL_MAP.i18n)) {
       return 'i18n';
-    } else if (url.includes('cloud.bytedance.net')) {
-      return 'cn';
-    }
-
-    // Fallback: check for general bytedance domains
-    if (url.includes('bytedance.net') || url.includes('bytedance.com')) {
-      // Default to CN for general bytedance domains
+    } else if (url.includes(LOGIN_URL_MAP.cn)) {
       return 'cn';
     }
 
@@ -67,7 +61,7 @@ async function initializePopup() {
 
     if (tab && tab.url) {
       // Check if current page is a ByteDance SSO login page
-      if (tab.url.includes('bytedance.net') || tab.url.includes('bytedance.com')) {
+      if (tab.url.includes(LOGIN_URL_MAP.cn) || tab.url.includes(LOGIN_URL_MAP.us) || tab.url.includes(LOGIN_URL_MAP.i18n)) {
         // Analyze URL to determine which region this page belongs to
         const detectedRegion = detectRegionFromUrl(tab.url);
 
