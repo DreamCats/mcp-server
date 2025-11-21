@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "ByteDance SSO Auth Capture",
+  "version": "1.1.0",
+  "description": "Extract CAS_SESSION cookie for ByteDance SSO authentication by region",
+  "permissions": [
+    "cookies",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://*.bytedance.net/*",
+    "https://*.bytedance.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ByteDance SSO Auth Capture",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "128": "icons/icon128.png"
+  }
+}

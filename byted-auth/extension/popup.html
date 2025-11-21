@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>ByteDance SSO Auth Capture</title>
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      background: #f5f5f5;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 16px;
+    }
+
+    .title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #333;
+      margin: 0 0 4px 0;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: #666;
+      margin: 0;
+    }
+
+    .current-tab {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 16px;
+      border: 1px solid #e0e0e0;
+    }
+
+    .tab-info {
+      font-size: 12px;
+      color: #666;
+      margin: 0 0 4px 0;
+    }
+
+    .tab-url {
+      font-size: 11px;
+      color: #999;
+      word-break: break-all;
+      margin: 0;
+    }
+
+    .region-buttons {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .region-btn {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #d0d0d0;
+      border-radius: 6px;
+      background: white;
+      color: #333;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .region-btn:hover {
+      background: #f0f0f0;
+      border-color: #999;
+    }
+
+    .region-btn:active {
+      background: #e8e8e8;
+    }
+
+    .region-btn.active {
+      background: #1890ff;
+      color: white;
+      border-color: #1890ff;
+    }
+
+    .result-section {
+      background: white;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      margin-bottom: 12px;
+      min-height: 60px;
+    }
+
+    .result-label {
+      font-size: 12px;
+      color: #666;
+      margin: 0 0 8px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .region-tag {
+      background: #f0f0f0;
+      color: #666;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .result-value {
+      font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+      font-size: 11px;
+      word-break: break-all;
+      background: #f8f8f8;
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #e0e0e0;
+      margin: 0;
+      min-height: 20px;
+      line-height: 1.4;
+    }
+
+    .result-value.empty {
+      color: #999;
+      font-style: italic;
+    }
+
+    .login-url {
+      font-size: 11px;
+      color: #666;
+      margin: 8px 0 0 0;
+      word-break: break-all;
+    }
+
+    .copy-btn {
+      width: 100%;
+      padding: 10px;
+      background: #52c41a;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .copy-btn:hover {
+      background: #389e0d;
+    }
+
+    .copy-btn:active {
+      background: #237804;
+    }
+
+    .copy-btn:disabled {
+      background: #d9d9d9;
+      cursor: not-allowed;
+    }
+
+    .status {
+      text-align: center;
+      font-size: 12px;
+      color: #666;
+      margin-top: 8px;
+      min-height: 16px;
+    }
+
+    .status.error {
+      color: #ff4d4f;
+    }
+
+    .status.success {
+      color: #52c41a;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #1890ff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-right: 6px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1 class="title">ByteDance SSO Auth</h1>
+    <p class="subtitle">Extract CAS_SESSION cookie by region</p>
+  </div>
+
+  <div class="current-tab">
+    <p class="tab-info">当前状态:</p>
+    <p class="tab-url" id="current-status">点击区域按钮开始SSO登录流程</p>
+  </div>
+
+  <div class="region-buttons">
+    <button class="region-btn" id="btn-cn" data-region="cn">CN</button>
+    <button class="region-btn" id="btn-us" data-region="us">US</button>
+    <button class="region-btn" id="btn-i18n" data-region="i18n">I18N</button>
+  </div>
+
+  <div class="result-section">
+    <div class="result-label">
+      <span>CAS_SESSION</span>
+      <span class="region-tag hidden" id="selected-region"></span>
+    </div>
+    <pre class="result-value empty" id="cas-value">选择区域后将自动跳转到SSO登录页</pre>
+    <div class="login-url hidden" id="login-url"></div>
+  </div>
+
+  <button class="copy-btn" id="copy-btn" disabled>Copy to Clipboard</button>
+
+  <div class="status" id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
