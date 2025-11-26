@@ -1,10 +1,15 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `src/` hosts the FastMCP server pieces: `mcp_server.py` registers MCP tools, `auth.py` manages JWT via CAS cookies, and `log_query_by_id.py` / `log_query_by_keyword.py` wrap the log service APIs.
-- `main.py` is the runnable entry point; prefer it over importing modules directly.
-- `tests/` holds pytest async coverage (`test_real_data_workflow.py` plus fixtures). Mirror new behaviors with matching tests.
-- Shell helpers at repo root (`startup.sh`, `stop.sh`, `status.sh`, `restart.sh`) manage background runs.
+- `src/`: `mcp_server.py` registers tools, `auth.py` handles JWT, `log_query_by_id.py` / `log_query_by_keyword.py` wrap log APIs.
+- `main.py` is the entry point; avoid importing modules directly for runs.
+- `tests/` holds pytest async cases (`test_real_data_workflow.py` plus fixtures). Mirror new behaviors with tests.
+- Root scripts (`startup.sh`, `stop.sh`, `status.sh`, `restart.sh`) manage background runs.
+
+## Log Message Filtering
+- Configure `_msg` filters in root `message_filters.json` under `msg_filters` (regex list; `(?s)` enables multi-line).
+- Examples: `_compliance_nlp_log`, `_compliance_source=footprint`, `(?s)"uid_entity":\\s*\\{.*?\\}`, `(?m)\"LogID\":\\s*\"[^\\"]*\"`.
+- Edit the file to add/remove rules; queries pick them up on next run.
 
 ## Build, Test, and Development Commands
 - Install deps: `pip install -r requirements.txt`.
