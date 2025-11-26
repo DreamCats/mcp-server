@@ -6,10 +6,14 @@
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any
+import json
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 import httpx
 import structlog
-from datetime import datetime
 
 # 获取日志记录器实例
 logger = structlog.get_logger(__name__)
@@ -40,7 +44,17 @@ class LogQueryByID:
         }
     }
 
-    def __init__(self, jwt_managers: Dict[str, Any]):
+    # 默认的日志内容过滤正则，用于移除冗余字段
+    DEFAULT_MESSAGE_FILTER_PATTERNS = [
+        r"_compliance_nlp_log",
+        r"_compliance_source=footprint",
+    ]
+
+    # 默认的过滤配置文件路径（仓库根目录）
+    DEFAULT_FILTER_CONFIG_PATH = Path(__file__).resolve().parent.parent / "message_filters.json"
+
+    def __init__(self, jwt_managers: Dict[str, Any], message_filter_patterns: Optional[List[str]] = None,
+                 filter_config_path: Optional[Path] = None):
         """
         初始化日志发现器
 
@@ -49,9 +63,13 @@ class LogQueryByID:
         参数:
             jwt_managers: 区域 JWT 管理器字典，将区域键映射到 JWTAuthManager 实例
                          期望的键: "us", "i18n"（如果需要也可以包含 "cn"）
+            message_filter_patterns: 可选的消息过滤正则列表，用于删除 _msg 中的噪声字段
+            filter_config_path: 可选的过滤配置文件路径，默认为仓库根目录 message_filters.json
         """
         # 保存 JWT 管理器实例
         self.jwt_managers = jwt_managers
+        # 准备 _msg 过滤规则
+        self._prepare_message_filters(message_filter_patterns, filter_config_path)
 
         # 配置 HTTP 客户端
         # 设置超时时间和请求头，模拟浏览器行为以避免被拦截
@@ -64,6 +82,70 @@ class LogQueryByID:
                 "Content-Type": "application/json",
             }
         )
+
+    def _prepare_message_filters(self, message_filter_patterns: Optional[List[str]],
+                                 filter_config_path: Optional[Path]):
+        """
+        准备 _msg 过滤正则：优先使用显式传入，其次尝试读取配置文件，最后回退默认规则。
+        """
+        patterns = message_filter_patterns or self._load_patterns_from_file(filter_config_path)
+        if not patterns:
+            patterns = self.DEFAULT_MESSAGE_FILTER_PATTERNS
+
+        # 预编译过滤规则，提高过滤性能
+        self._message_filters = [re.compile(pattern, re.IGNORECASE) for pattern in patterns]
+        logger.info("已加载消息过滤规则", pattern_count=len(self._message_filters))
+
+    def _load_patterns_from_file(self, filter_config_path: Optional[Path]) -> Optional[List[str]]:
+        """
+        从 JSON 配置文件读取消息过滤规则。
+
+        预期文件结构:
+        {
+          "msg_filters": [
+            "_compliance_nlp_log",
+            "_compliance_source=footprint"
+          ]
+        }
+        """
+        path = filter_config_path or self.DEFAULT_FILTER_CONFIG_PATH
+        try:
+            path_obj = Path(path)
+        except TypeError:
+            path_obj = self.DEFAULT_FILTER_CONFIG_PATH
+
+        if not path_obj.exists():
+            logger.info("未找到消息过滤配置文件，使用默认规则", config_path=str(path_obj))
+            return None
+
+        try:
+            with path_obj.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as exc:
+            logger.warning("读取消息过滤配置失败，使用默认规则", config_path=str(path_obj), error=str(exc))
+            return None
+
+        patterns_raw = None
+        selected_key = None
+        if isinstance(data, dict):
+            for key in ("msg_filters", "_msg_filters", "patterns"):
+                if key in data:
+                    patterns_raw = data.get(key)
+                    selected_key = key
+                    break
+
+        if not patterns_raw or not isinstance(patterns_raw, list):
+            logger.warning("消息过滤配置缺少有效的 msg_filters 字段，使用默认规则", config_path=str(path_obj))
+            return None
+
+        cleaned = [p.strip() for p in patterns_raw if isinstance(p, str) and p.strip()]
+        if not cleaned:
+            logger.warning("消息过滤配置 patterns 为空，使用默认规则", config_path=str(path_obj))
+            return None
+
+        if selected_key:
+            logger.info("使用消息过滤配置", key=selected_key, pattern_count=len(cleaned))
+        return cleaned
 
     async def query_logs_by_logid(self, logid: str, region: str, psm_list: Optional[List[str]] = None,
                                 scan_time_min: int = 10) -> Dict[str, Any]:
@@ -185,6 +267,23 @@ class LogQueryByID:
                         error=str(e), error_type=type(e).__name__)
             raise RuntimeError(f"查询日志意外错误，日志ID: {logid}，区域: {region_key}: {e}")
 
+    def filter_message_content(self, message: str) -> str:
+        """
+        过滤 _msg 内容中的冗余字段
+
+        使用预配置的正则列表移除噪声字段，减少消息长度但保留关键信息。
+        """
+        if not isinstance(message, str):
+            return ""
+
+        filtered = message
+        for regex in getattr(self, "_message_filters", []):
+            filtered = regex.sub("", filtered)
+
+        # 清理多余空格，保留可读性
+        filtered = re.sub(r"[ \t]{2,}", " ", filtered)
+        return filtered.strip()
+
     def extract_log_messages(self, log_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         从 API 响应中提取日志消息
@@ -236,9 +335,10 @@ class LogQueryByID:
 
                     # 重点关注 _msg 字段（日志消息内容）
                     if key == "_msg":
+                        filtered_value = self.filter_message_content(value_str)
                         item_info["values"].append({
                             "key": key,
-                            "value": value_str,
+                            "value": filtered_value,
                             "type": kv.get("type", ""),  # 值类型
                             "highlight": kv.get("highlight", False)  # 是否高亮显示
                         })

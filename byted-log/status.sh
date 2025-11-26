@@ -27,7 +27,6 @@ fi
 echo "状态: ✅ 运行中"
 echo "进程 ID: $PID"
 echo "端口: ${MCP_PORT:-8200}"
-echo "环境变量 CAS_SESSION: $([ -n "$CAS_SESSION" ] && echo "已设置" || echo "未设置")"
 
 # 检查日志文件
 if [ -f "$SCRIPT_DIR/mcp-server.log" ]; then

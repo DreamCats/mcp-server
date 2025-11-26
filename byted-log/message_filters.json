@@ -1,0 +1,10 @@
+{
+  "msg_filters": [
+    "_compliance_nlp_log",
+    "_compliance_source=footprint",
+    "(?s)\"user_extra\":\\s*\"\\{.*?\\}\"",
+    "(?m)\\\"LogID\\\":\\s*\\\"[^\\\"]*\\\"",
+    "(?m)\\\"Addr\\\":\\s*\\\"[^\\\"]*\\\"",
+    "(?m)\\\"Client\\\":\\s*\\\"[^\\\"]*\\\""
+  ]
+}
