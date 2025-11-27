@@ -13,6 +13,13 @@ PID_FILE="$SCRIPT_DIR/supertime_mcp.pid"
 LOG_FILE="$SCRIPT_DIR/supertime_mcp.log"
 PYTHON_CMD="python3"
 
+# 激活虚拟环境
+if [ -f "$SCRIPT_DIR/.venv/bin/activate" ]; then
+    source "$SCRIPT_DIR/.venv/bin/activate"
+elif [ -f "$SCRIPT_DIR/../.venv/bin/activate" ]; then
+    source "$SCRIPT_DIR/../.venv/bin/activate"
+fi
+
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'

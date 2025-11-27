@@ -8,6 +8,13 @@ set -e
 SERVICE_NAME="SuperTime MCP"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# 激活虚拟环境
+if [ -f "$SCRIPT_DIR/.venv/bin/activate" ]; then
+    source "$SCRIPT_DIR/.venv/bin/activate"
+elif [ -f "$SCRIPT_DIR/../.venv/bin/activate" ]; then
+    source "$SCRIPT_DIR/../.venv/bin/activate"
+fi
+
 # 颜色输出
 RED='\033[0;31m'
 GREEN='\033[0;32m'
